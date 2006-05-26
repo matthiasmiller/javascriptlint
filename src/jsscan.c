@@ -1234,7 +1234,8 @@ skipline:
         if (MatchChar(ts, '*')) {
             JSBool startedControlComment, endedControlComment;
             const char *controlCommentIgnore, *controlCommentEnd,
-                *controlCommentOptionExplicit, *controlCommentImport;
+                *controlCommentOptionExplicit, *controlCommentImport,
+                *controlCommentFallthru;
             /*arbitrary size*/
             char importPath[1024], *importPathPos;
 
@@ -1246,6 +1247,7 @@ skipline:
                 controlCommentEnd = "@end@";
                 controlCommentOptionExplicit = "@option explicit@";
                 controlCommentImport = "@import ";
+                controlCommentFallthru = "@fallthru@";
 
                 startedControlComment = PeekChar(ts) == '@';
             }
@@ -1268,6 +1270,7 @@ skipline:
                         JSL_MATCH_COMMENT(controlCommentIgnore, c);
                         JSL_MATCH_COMMENT(controlCommentEnd, c);
                         JSL_MATCH_COMMENT(controlCommentOptionExplicit, c);
+                        JSL_MATCH_COMMENT(controlCommentFallthru, c);
                         if (JSL_MATCHED_COMMENT(controlCommentImport)) {
                             if (importPathPos && importPathPos - importPath < sizeof(importPath)-1) {
                                 *importPathPos++ = (char)c;
@@ -1326,6 +1329,12 @@ skipline:
                     else {
                         cx->lint->controlCommentsOptionExplicit = JS_TRUE;
                     }
+                }
+                else if (JSL_MATCHED_COMMENT(controlCommentFallthru)) {
+                    if (cx->lint->controlCommentsAllowFallthru && !cx->lint->controlCommentsHadFallthru)
+                        cx->lint->controlCommentsHadFallthru = JS_TRUE;
+                    else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU))
+                        RETURN(TOK_ERROR);
                 }
                 else if (JSL_MATCHED_COMMENT(controlCommentImport)) {
                     if (importPathPos > importPath) {

@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1f"
+#define JSL_VERSION "0.1g"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1

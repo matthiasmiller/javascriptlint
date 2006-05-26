@@ -684,8 +684,9 @@ js_CompileTokenStream(JSContext *cx, JSObject *chain, JSTokenStream *ts,
 #define ENDS_IN_BREAK   2
 
 static int
-HasFinalReturn(JSParseNode *pn)
+HasFinalReturn(JSParseNode *pn, JSBool breakIsReturn)
 {
+    /* jsl: the break statement should be treated the same as a return for lint purposes (breakIsReturn) */
     uintN rv, rv2, hasDefault;
     JSParseNode *pn2, *pn3;
 
@@ -693,12 +694,12 @@ HasFinalReturn(JSParseNode *pn)
       case TOK_LC:
         if (!pn->pn_head)
             return ENDS_IN_OTHER;
-        return HasFinalReturn(PN_LAST(pn));
+        return HasFinalReturn(PN_LAST(pn), breakIsReturn);
 
       case TOK_IF:
-        rv = HasFinalReturn(pn->pn_kid2);
+        rv = HasFinalReturn(pn->pn_kid2, breakIsReturn);
         if (pn->pn_kid3)
-            rv &= HasFinalReturn(pn->pn_kid3);
+            rv &= HasFinalReturn(pn->pn_kid3, breakIsReturn);
         return rv;
 
 #if JS_HAS_SWITCH_STATEMENT
@@ -711,7 +712,7 @@ HasFinalReturn(JSParseNode *pn)
             pn3 = pn2->pn_right;
             JS_ASSERT(pn3->pn_type == TOK_LC);
             if (pn3->pn_head) {
-                rv2 = HasFinalReturn(PN_LAST(pn3));
+                rv2 = HasFinalReturn(PN_LAST(pn3), breakIsReturn);
                 if (rv2 == ENDS_IN_OTHER && pn2->pn_next)
                     /* Falling through to next case or default. */;
                 else
@@ -724,10 +725,13 @@ HasFinalReturn(JSParseNode *pn)
 #endif /* JS_HAS_SWITCH_STATEMENT */
 
       case TOK_BREAK:
-        return ENDS_IN_BREAK;
+        if (breakIsReturn)
+            return ENDS_IN_RETURN;
+        else
+            return ENDS_IN_BREAK;
 
       case TOK_WITH:
-        return HasFinalReturn(pn->pn_right);
+        return HasFinalReturn(pn->pn_right, breakIsReturn);
 
       case TOK_RETURN:
         return ENDS_IN_RETURN;
@@ -739,22 +743,22 @@ HasFinalReturn(JSParseNode *pn)
       case TOK_TRY:
         /* If we have a finally block that returns, we are done. */
         if (pn->pn_kid3) {
-            rv = HasFinalReturn(pn->pn_kid3);
+            rv = HasFinalReturn(pn->pn_kid3, breakIsReturn);
             if (rv == ENDS_IN_RETURN)
                 return rv;
         }
 
         /* Else check the try block and any and all catch statements. */
-        rv = HasFinalReturn(pn->pn_kid1);
+        rv = HasFinalReturn(pn->pn_kid1, breakIsReturn);
         if (pn->pn_kid2)
-            rv &= HasFinalReturn(pn->pn_kid2);
+            rv &= HasFinalReturn(pn->pn_kid2, breakIsReturn);
         return rv;
 
       case TOK_CATCH:
         /* Check this block's code and iterate over further catch blocks. */
-        rv = HasFinalReturn(pn->pn_kid3);
+        rv = HasFinalReturn(pn->pn_kid3, breakIsReturn);
         for (pn2 = pn->pn_kid2; pn2; pn2 = pn2->pn_kid2)
-            rv &= HasFinalReturn(pn2->pn_kid3);
+            rv &= HasFinalReturn(pn2->pn_kid3, breakIsReturn);
         return rv;
 #endif
 
@@ -788,7 +792,7 @@ ReportNoReturnValue(JSContext *cx, JSTokenStream *ts)
 static JSBool
 CheckFinalReturn(JSContext *cx, JSTokenStream *ts, JSParseNode *pn)
 {
-    return HasFinalReturn(pn) == ENDS_IN_RETURN || ReportNoReturnValue(cx, ts);
+    return HasFinalReturn(pn, JS_FALSE) == ENDS_IN_RETURN || ReportNoReturnValue(cx, ts);
 }
 
 static JSParseNode *
@@ -1493,6 +1497,80 @@ ImportExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
 extern const char js_with_statement_str[];
 
+static JSBool
+AreExpressionsIdentical(JSContext *cx, JSParseNode *pn1, JSParseNode *pn2, JSBool functionsAreIdentical)
+{
+    JSParseNode *child1, *child2;
+
+    if (!pn1 && !pn2)
+        return JS_TRUE;
+    else if (!pn1 || !pn2)
+        return JS_FALSE;
+
+    /* check types */
+    if (pn1->pn_type != pn2->pn_type)
+        return JS_FALSE;
+    if (pn1->pn_op != pn2->pn_op)
+        return JS_FALSE;
+    if (pn1->pn_arity != pn2->pn_arity)
+        return JS_FALSE;
+
+    /* bail out with function */
+    if (!functionsAreIdentical) {
+        if (pn1->pn_type == TOK_FUNCTION)
+            return JS_FALSE;
+        else if (pn1->pn_type == TOK_LP && pn1->pn_op == JSOP_CALL)
+            return JS_FALSE;
+    }
+
+    /* check atoms on names and properties */
+    if (pn1->pn_type == TOK_NAME ||
+        pn1->pn_type == TOK_DOT) {
+        if (pn1->pn_atom != pn2->pn_atom)
+            return JS_FALSE;
+    }
+
+    /* check values on numbers */
+    if (pn1->pn_type == TOK_NUMBER)
+    {
+        if (pn1->pn_num != pn2->pn_num)
+            return JS_FALSE;
+    }
+
+    switch (pn1->pn_arity) {
+      case PN_LIST:
+        if (pn1->pn_count != pn2->pn_count)
+            return JS_FALSE;
+        for (child1 = pn1->pn_head, child2 = pn2->pn_head; child1 && child2;
+            child1 = child1->pn_next, child2 = child2->pn_next) {
+
+            if (!AreExpressionsIdentical(cx, child1, child2, functionsAreIdentical)) {
+                return JS_FALSE;
+            }
+        }
+        return JS_TRUE;
+      case PN_TERNARY:
+        return AreExpressionsIdentical(cx, pn1->pn_kid1, pn2->pn_kid1, functionsAreIdentical) &&
+            AreExpressionsIdentical(cx, pn1->pn_kid2, pn2->pn_kid2, functionsAreIdentical) &&
+            AreExpressionsIdentical(cx, pn1->pn_kid3, pn2->pn_kid3, functionsAreIdentical);
+      case PN_BINARY:
+        if (pn1->pn_val != pn2->pn_val)
+            return JS_FALSE;
+        return AreExpressionsIdentical(cx, pn1->pn_left, pn2->pn_left, functionsAreIdentical) &&
+            AreExpressionsIdentical(cx, pn1->pn_right, pn2->pn_right, functionsAreIdentical);
+      case PN_UNARY:
+        if (pn1->pn_val != pn2->pn_val)
+            return JS_FALSE;
+        return AreExpressionsIdentical(cx, pn1->pn_kid, pn2->pn_kid, functionsAreIdentical);
+      case PN_NAME:
+        return AreExpressionsIdentical(cx, pn1->pn_expr, pn2->pn_expr, functionsAreIdentical);
+      case PN_FUNC:
+        return AreExpressionsIdentical(cx, pn1->pn_body, pn2->pn_body, functionsAreIdentical);
+      default:
+        return JS_TRUE;
+    }
+}
+
 static JSParseNode *
 Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 {
@@ -1678,6 +1756,18 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                     pn3->pn_left = Expr(cx, ts, tc);
                     if (!pn3->pn_left)
                         return NULL;
+
+                    /* check for duplicate case statements */
+                    for (pn5 = pn2->pn_head; pn5; pn5 = pn5->pn_next) {
+                        /* assume that function calls are identical */
+                        if (AreExpressionsIdentical(cx, pn5->pn_left, pn3->pn_left, JS_TRUE)) {
+                            if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING | JSREPORT_STRICT,
+                                                             JSMSG_DUPLICATE_CASE_IN_SWITCH)) {
+                                return NULL;
+                            }
+                            break;
+                        }
+                    }
                 }
                 PN_APPEND(pn2, pn3);
                 if (pn2->pn_count == JS_BIT(16)) {
@@ -1702,27 +1792,68 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 return NULL;
             pn4->pn_type = TOK_LC;
             PN_INIT_LIST(pn4);
-            if (cx->lint) {
-                JSBool needsbreak;
-                needsbreak = (js_PeekToken(cx, ts) == TOK_RC);
 
-                while ((tt = js_PeekToken(cx, ts)) != TOK_RC &&
-                       tt != TOK_CASE && tt != TOK_DEFAULT) {
-                    if (tt == TOK_ERROR)
-                        return NULL;
-                    pn5 = Statement(cx, ts, tc);
-                    if (!pn5)
-                        return NULL;
-                    pn4->pn_pos.end = pn5->pn_pos.end;
-                    PN_APPEND(pn4, pn5);
-                    /* will report missing break in unreachable code */
-                    needsbreak = (tt != TOK_BREAK && tt != TOK_RETURN && tt != TOK_THROW);
+            if (cx->lint) {
+                /* must allow fallthru before peeking */
+                cx->lint->controlCommentsAllowFallthru = JS_TRUE;
+                cx->lint->controlCommentsHadFallthru = JS_FALSE;
+            }
+
+            while ((tt = js_PeekToken(cx, ts)) != TOK_RC &&
+                   tt != TOK_CASE && tt != TOK_DEFAULT) {
+                if (tt == TOK_ERROR)
+                    return NULL;
+
+                /* check for misused fallthru */
+                if (cx->lint && cx->lint->controlCommentsHadFallthru &&
+                    !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU)) {
+                    return NULL;
                 }
 
-                if (needsbreak) {
+                pn5 = Statement(cx, ts, tc);
+                if (!pn5)
+                    return NULL;
+
+                /* check for misused fallthru */
+                if (cx->lint && cx->lint->controlCommentsHadFallthru &&
+                    !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU)) {
+                    return NULL;
+                }
+
+                pn4->pn_pos.end = pn5->pn_pos.end;
+                PN_APPEND(pn4, pn5);
+            }
+
+            if (cx->lint) {
+                cx->lint->controlCommentsAllowFallthru = JS_FALSE;
+
+                if (tt == TOK_RC && cx->lint->controlCommentsHadFallthru) {
+                    /* fallthru doesn't make sense in the last statement */
+                    if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU))
+                        return NULL;
+                    cx->lint->controlCommentsHadFallthru = JS_FALSE;
+                }
+
+                if (pn4->pn_head) {
+                    if (HasFinalReturn(PN_LAST(pn4), JS_TRUE) == ENDS_IN_OTHER) {
+                        /* must have fallthru or return/break statement on non-empty case */
+                        if (!cx->lint->controlCommentsHadFallthru &&
+                            !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                         JSREPORT_WARNING | JSREPORT_STRICT,
+                                                         JSMSG_MISSING_BREAK)) {
+                            return NULL;
+                        }
+                    }
+                    else if (cx->lint->controlCommentsHadFallthru &&
+                        !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU)) {
+                        /* fallthru does nothing here */
+                        return NULL;
+                    }
+                }
+                else if (tt == TOK_RC) {
+                    /* the last statement must have a break */
                     if (!js_ReportCompileErrorNumber(cx, ts, NULL,
-                                                     JSREPORT_WARNING |
-                                                     JSREPORT_STRICT,
+                                                     JSREPORT_WARNING | JSREPORT_STRICT,
                                                      JSMSG_MISSING_BREAK)) {
                         return NULL;
                     }
@@ -1734,6 +1865,12 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 pn4->pn_pos.begin = pn4->pn_head->pn_pos.begin;
             pn3->pn_pos.end = pn4->pn_pos.end;
             pn3->pn_right = pn4;
+        }
+
+        if (!seenDefault && !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                         JSREPORT_WARNING | JSREPORT_STRICT,
+                                                         JSMSG_MISSING_DEFAULT_CASE)) {
+            return NULL;
         }
 
         js_PopStatement(tc);
@@ -1893,7 +2030,9 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             if (tt == TOK_RP) {
                 pn3 = NULL;
             } else {
+                tc->flags |= TCF_IN_FOR_POST;
                 pn3 = Expr(cx, ts, tc);
+                tc->flags &= ~TCF_IN_FOR_POST;
                 if (!pn3)
                     return NULL;
             }
@@ -2607,7 +2746,8 @@ Expr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
     pn = AssignExpr(cx, ts, tc);
     if (pn && js_MatchToken(cx, ts, TOK_COMMA)) {
-        if (cx->lint &&
+        /* allow commas in first and last expressions of for loop */
+        if (cx->lint && (tc->flags & TCF_IN_FOR_INIT) == 0 && (tc->flags & TCF_IN_FOR_POST) == 0 &&
             !js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING |
                                          JSREPORT_STRICT,
