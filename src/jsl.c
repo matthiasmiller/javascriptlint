@@ -81,7 +81,8 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.2.4"
+#define JSL_VERSION "0.2.5"
+#define JSL_DEVELOPED_BY "Developed by Matthias Miller (http://www.JavaScriptLint.com)"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -104,6 +105,8 @@
 #endif
 #endif
 
+const char gUTF8BOM[] = {'\xEF', '\xBB', '\xBF'};
+
 /* configuration constants */
 #define MAX_CONF_LINE 500
 
@@ -115,6 +118,7 @@ typedef enum {
     JSL_PLACEHOLDER_ERROR,
     JSL_PLACEHOLDER_ERROR_NAME,
     JSL_PLACEHOLDER_ERROR_PREFIX,
+    JSL_PLACEHOLDER_ERROR_MSG,
     JSL_PLACEHOLDER_ERROR_MSGENC,
     JSLPlaceholder_Limit
 } JSLPlaceholder;
@@ -127,6 +131,7 @@ const char *placeholders[] = {
     "__ERROR__",
     "__ERROR_NAME__",
     "__ERROR_PREFIX__",
+    "__ERROR_MSG__",
     "__ERROR_MSGENC__"
 };
 
@@ -146,6 +151,8 @@ const char *placeholders[] = {
 #define WARNING_PREFIX          "warning";
 #define STRICT_WARNING_PREFIX   "warning";
 #define LINT_WARNING_PREFIX     "lint warning";
+
+#define JSL_OUTPUTFORMAT_ENCODE "encode:"
 
 char *errorNames[JSErr_Limit] = {
 #define MSG_DEF(name, number, count, exception, format) #name,
@@ -191,7 +198,7 @@ JSBool gLambdaAssignRequiresSemicolon = JS_TRUE;
 JSBool gRecurse = JS_FALSE;
 JSBool gShowFileListing = JS_TRUE;
 JSBool gShowContext = JS_TRUE;
-// Error format; this is the default for backward compatibility reasons
+/* Error format; this is the default for backward compatibility reasons */
 char gOutputFormat[MAX_CONF_LINE+1] = "__FILE__(__LINE__): __ERROR__";
 #ifdef WIN32
 JSBool gPauseAtEnd = JS_FALSE;
@@ -445,18 +452,64 @@ GetFileName(const char *path)
             break; \
     } while (1)
 
+static void
+OutputErrorVariableValue(const char *value, JSBool encode)
+{
+    const char *pos;
+
+    if (!value)
+        return;
+
+    if (!encode) {
+        fputs(value, stdout);
+        return;
+    }
+
+    pos = value;
+    while (*pos) {
+        switch (*pos) {
+          case '\\':
+          case '\"':
+          case '\'':
+            fputc('\\', stdout);
+            fputc(*pos, stdout);
+            break;
+          case '\t':
+            fputs("\\t", stdout);
+            break;
+          case '\r':
+            fputs("\\r", stdout);
+            break;
+          case '\n':
+            fputs("\\n", stdout);
+            break;
+          default:
+            fputc(*pos, stdout);
+            break;
+        }
+        pos++;
+    }
+}
+
 /* lineno may be zero if line number is not given */
 static void
 OutputErrorMessage(const char *path, int lineno, int colno, const char *errName,
                    const char *messagePrefix, const char *message)
 {
     const char *formatPos;
+    JSBool shouldEncode;
     formatPos = gOutputFormat;
+
+    /* check for the encode instruction */
+    shouldEncode = (strncasecmp(formatPos, JSL_OUTPUTFORMAT_ENCODE, strlen(JSL_OUTPUTFORMAT_ENCODE)) == 0);
+    if (shouldEncode)
+        formatPos += strlen(JSL_OUTPUTFORMAT_ENCODE);
 
     while (JS_TRUE) {
         int i;
         JSLPlaceholder placeholderType;
         const char *placeholderPos;
+        char *tmp;
 
         placeholderType = JSLPlaceholder_Limit;
         placeholderPos = NULL;
@@ -464,8 +517,7 @@ OutputErrorMessage(const char *path, int lineno, int colno, const char *errName,
         for (i = 0; i < JSLPlaceholder_Limit; i++) {
             const char *tmp;
             tmp = strstr(formatPos, placeholders[i]);
-            if (tmp && (!placeholderPos || tmp < placeholderPos))
-            {
+            if (tmp && (!placeholderPos || tmp < placeholderPos)) {
                 placeholderType = i;
                 placeholderPos = tmp;
             }
@@ -482,79 +534,57 @@ OutputErrorMessage(const char *path, int lineno, int colno, const char *errName,
         switch (placeholderType) {
           case JSL_PLACEHOLDER_FILE:
             if (path)
-                fputs(path, stdout);
+                OutputErrorVariableValue(path, shouldEncode);
             break;
 
           case JSL_PLACEHOLDER_FILENAME:
             if (path)
-                fputs(GetFileName(path), stdout);
+                OutputErrorVariableValue(GetFileName(path), shouldEncode);
             break;
 
           case JSL_PLACEHOLDER_LINE:
-            if (lineno) {
-                char *tmp;
-                tmp = JS_smprintf("%i", lineno);
-                fputs(tmp, stdout);
-                JS_smprintf_free(tmp);
-            }
-            else {
-                fputc('?', stdout);
-            }
+            tmp = JS_smprintf("%i", lineno);
+            OutputErrorVariableValue(tmp, shouldEncode);
+            JS_smprintf_free(tmp);
             break;
 
           case JSL_PLACEHOLDER_COL:
-            if (colno) {
-                char *tmp;
-                tmp = JS_smprintf("%i", colno);
-                fputs(tmp, stdout);
-                JS_smprintf_free(tmp);
-            }
-            else {
-                fputc('?', stdout);
-            }
+            tmp = JS_smprintf("%i", colno);
+            OutputErrorVariableValue(tmp, shouldEncode);
+            JS_smprintf_free(tmp);
             break;
 
           case JSL_PLACEHOLDER_ERROR:
-            if (messagePrefix)
-                fputs(messagePrefix, stdout);
-            if (messagePrefix && message)
-                fputs(": ", stdout);
-            if (message)
-                fputs(message, stdout);
+            if (messagePrefix && message) {
+                tmp = JS_smprintf("%s: %s", messagePrefix, message);
+                OutputErrorVariableValue(tmp, shouldEncode);
+                JS_smprintf_free(tmp);
+            }
+            else if (messagePrefix)
+                OutputErrorVariableValue(messagePrefix, shouldEncode);
+            else if (message)
+                OutputErrorVariableValue(message, shouldEncode);
             break;
 
           case JSL_PLACEHOLDER_ERROR_NAME:
-            if (errName) {
-                const char *tmp;
-                tmp = errName;
-                while (*tmp) {
-                    fputc(tolower(*tmp), stdout);
-                    tmp++;
-                }
-            }
+            if (errName)
+                OutputErrorVariableValue(errName, shouldEncode);
             break;
 
           case JSL_PLACEHOLDER_ERROR_PREFIX:
             if (messagePrefix)
-                fputs(messagePrefix, stdout);
+                OutputErrorVariableValue(messagePrefix, shouldEncode);
+            break;
+
+          case JSL_PLACEHOLDER_ERROR_MSG:
+            if (message)
+               OutputErrorVariableValue(message, shouldEncode);
             break;
 
           case JSL_PLACEHOLDER_ERROR_MSGENC:
-            if (message) {
-                const char *tmp;
-                tmp = message;
-                while (*tmp) {
-                    if (*tmp == '\\')
-                        fputs("\\\\", stdout);
-                    else if (*tmp == '\r')
-                        fputs("\\r", stdout);
-                    else if (*tmp == '\n')
-                        fputs("\\n", stdout);
-                    else
-                        fputc(*tmp, stdout);
-                    tmp++;
-                }
-            }
+            /* backward compatibility - always encode */
+            if (message)
+               OutputErrorVariableValue(message, JS_TRUE);
             break;
 
           case JSLPlaceholder_Limit:
@@ -897,15 +927,14 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                       const char *path, const char *contents,
                       JSLImportCallback callback, void *callbackParms)
 {
-    const char utf8BOM[] = {'\xEF', '\xBB', '\xBF'};
     JSScript *script;
     JSBool isHTMLFile;
     isHTMLFile = JS_FALSE;
 
     /* skip the UTF-8 BOM */
-    if (contents[0] == utf8BOM[0] &&
-        contents[1] == utf8BOM[1] &&
-        contents[2] == utf8BOM[2]) {
+    if (contents[0] == gUTF8BOM[0] &&
+        contents[1] == gUTF8BOM[1] &&
+        contents[2] == gUTF8BOM[2]) {
         contents += 3;
     }
 
@@ -1192,7 +1221,8 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                     if (script)
                         JS_DestroyScript(cx, script);
                     else {
-                        JS_ReportPendingException(cx); //no execution; must be compilation error
+                        /* no execution; must be compilation error */
+                        JS_ReportPendingException(cx);
                         SetExitCode(EXITCODE_JS_ERROR);
                         return JS_FALSE;
                     }
@@ -1228,7 +1258,8 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
             JS_DestroyScript(cx, script);
             return JS_TRUE;
         }
-        JS_ReportPendingException(cx); //no execution; must be compilation error
+        /* no execution; must be compilation error */
+        JS_ReportPendingException(cx);
         SetExitCode(EXITCODE_JS_ERROR);
         return JS_FALSE;
     }
@@ -1380,7 +1411,8 @@ ProcessStdin(JSContext *cx, JSObject *obj)
     *contentsPos = 0;
 
     /* lint */
-    if (!JS_PushLintIdentifers(cx, NULL, NULL, JS_FALSE, JS_TRUE, JS_TRUE, NULL, NULL)) {
+    if (!JS_PushLintIdentifers(cx, NULL, NULL, gAlwaysUseOptionExplicit, gLambdaAssignRequiresSemicolon,
+                              gEnableLegacyControlComments, NULL, NULL)) {
         JS_free(cx, contents);
         SetExitCode(EXITCODE_JS_ERROR);
         return JS_FALSE;
@@ -1418,9 +1450,10 @@ PrintDefaultConf(void)
 {
     fputs(
         "#\n"
-        "# JavaScript Lint " JSL_VERSION " Configuration File\n"
+        "# Configuration File for JavaScript Lint " JSL_VERSION "\n"
+        "# " JSL_DEVELOPED_BY "\n"
         "#\n"
-        "# This file can be used to lint a collection of scripts, or to enable\n"
+        "# This configuration file can be used to lint a collection of scripts, or to enable\n"
         "# or disable warnings for scripts that are linted via the command line.\n"
         "#\n"
         "\n"
@@ -1430,7 +1463,7 @@ PrintDefaultConf(void)
         "#\n"
         , stdout);
 
-    // keep in sync with ProcessConf
+    /* keep in sync with ProcessConf */
     #define MSG_DEF(name, number, count, exception, format) \
     { if (CAN_DISABLE_WARNING(number)) PrintConfErrName(number, format); }
     #include "js.msg"
@@ -1509,23 +1542,33 @@ PrintDefaultConf(void)
         , stdout);
 }
 
+static void
+PrintHeader(void)
+{
+    fprintf(stdout, "JavaScript Lint %s (%s)\n", JSL_VERSION, JS_GetImplementationVersion());
+    fputs(JSL_DEVELOPED_BY "\n\n", stdout);
+}
+
 static int
 usage(void)
 {
-    fprintf(stdout, "\nJavaScript Lint %s (%s)\n", JSL_VERSION, JS_GetImplementationVersion());
-    fprintf(stdout, "usage: jsl [help:conf] [conf filename] [process filename] [stdin]\n"
-        "\t[+recurse|-recurse] [+context|-context] [nologo] [nofilelisting] [nosummary]");
+    fputc('\n', stdout);
+    PrintHeader();
+    fputs("Usage: jsl [-help:conf]\n"
+        "\t[-conf filename] [-process filename] [+recurse|-recurse] [-stdin]\n"
+        "\t[-nologo] [-nofilelisting] [-nocontext] [-nosummary] [-output-format ______]\n",
+        stdout);
 #ifdef WIN32
-    fprintf(stdout, " [pauseatend]");
+    fputs("\t[-pauseatend]\n", stdout);
 #endif
-    fprintf(stdout, "\n");
+
     fputs(
         "\nError levels:\n"
-        "  0 - success\n"
+        "  0 - Success\n"
         "  1 - JavaScript warnings\n"
-        "  2 - usage or configuration error\n"
+        "  2 - Usage or configuration error\n"
         "  3 - JavaScript error\n"
-        "  4 - file error\n",
+        "  4 - File error\n",
         stdout);
     SetExitCode(EXITCODE_USAGE_OR_CONFIGERR);
     return EXITCODE_USAGE_OR_CONFIGERR;
@@ -1574,7 +1617,7 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
         return EXITCODE_FILE_ERROR;
 	}
 
-    // open file
+    /* open file */
     file = fopen(path, "r");
     if (!file) {
         OutputErrorMessage(path, 0, 0, NULL, "can't open file", strerror(errno));
@@ -1612,6 +1655,12 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
         /* null-terminate */
         line[linelen] = 0;
         linepos = line;
+
+        /* skip the UTF-8 BOM on the first line */
+        if (lineno == 1 && linelen >= sizeof(gUTF8BOM) && memcmp(linepos, gUTF8BOM, sizeof(gUTF8BOM)) == 0) {
+            linepos += sizeof(gUTF8BOM);
+            linelen -= sizeof(gUTF8BOM);
+        }
 
         if (!*linepos) {
             /* ignore blank line */
@@ -1773,7 +1822,7 @@ ProcessSettingErr_Garbage:
                 /* deprecated */
             }
             else {
-                // keep in sync with PrintDefaultConf
+                /* keep in sync with PrintDefaultConf */
                 for (i = 1; i < JSErr_Limit; i++) {
                     if (CAN_DISABLE_WARNING(i)) {
                         if (strcasecmp(linepos, errorNames[i]) == 0) {
@@ -1804,9 +1853,11 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
 {
     int i, result;
     /* command line should take precedence over config */
-    JSBool overrideRecurse, overrideShowContext;
+    JSBool overrideRecurse, overrideShowContext, overrideOutputFormat;
     JSBool argRecurse, argShowContext;
     JSBool argPrintLogo, argPrintSummary, argUseStdin;
+    JSBool argEncodeFormat;
+    char argOutputFormat[MAX_CONF_LINE+1];
     /* paths */
     const char *configPath;
     JSLPathList scriptPaths;
@@ -1818,11 +1869,14 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
 
     overrideRecurse = JS_FALSE;
     overrideShowContext = JS_FALSE;
+    overrideOutputFormat = JS_FALSE;
     argRecurse = JS_FALSE;
     argShowContext = JS_FALSE;
     argPrintLogo = JS_TRUE;
     argPrintSummary = JS_TRUE;
     argUseStdin = JS_FALSE;
+    argEncodeFormat = JS_FALSE;
+    argOutputFormat[0] = '\0';
 
     configPath = NULL;
     JS_INIT_CLIST(&scriptPaths.links);
@@ -1841,22 +1895,26 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
             argRecurse = JS_FALSE;
         }
         else if (strcasecmp(parm, "+context") == 0) {
+            /* backward compatibility */
             overrideShowContext = JS_TRUE;
             argShowContext = JS_TRUE;
         }
         else if (strcasecmp(parm, "-context") == 0) {
+            /* backward compatibility */
             overrideShowContext = JS_TRUE;
             argShowContext = JS_FALSE;
         }
         else {
-            /* skip / */
-            if (*parm == '/')
+            /* skip - and -- (backward compatibility) */
+            int dashes;
+            dashes = 0;
+            if (*parm == '-') {
                 parm++;
-            /* skip - and -- */
-            else if (*parm == '-') {
-                parm++;
-                if (*parm == '-')
+                dashes++;
+                if (*parm == '-') {
                     parm++;
+                    dashes++;
+                }
             }
 
             if (strcasecmp(parm, "help:conf") == 0) {
@@ -1870,14 +1928,37 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
             else if (strcasecmp(parm, "nofilelisting") == 0) {
                 gShowFileListing = JS_FALSE;
             }
+            else if (strcasecmp(parm, "nocontext") == 0) {
+                overrideShowContext = JS_TRUE;
+                argShowContext = JS_FALSE;
+            }
             else if (strcasecmp(parm, "nosummary") == 0) {
                 argPrintSummary = JS_FALSE;
+            }
+            else if (strcasecmp(parm, "output-format") == 0 && dashes == 1) {
+                int requiredBufferSize;
+                if (++i >= argc) {
+                    fprintf(stdout, "Error: missing output format.");
+                    result = usage();
+                    goto cleanup;
+                }
+
+                /* check length */
+                requiredBufferSize = strlen(argv[i])+1;
+                if (requiredBufferSize > sizeof(gOutputFormat) ||
+                    requiredBufferSize > sizeof(argOutputFormat)) {
+                    fprintf(stdout, "Error: the output format exceeds the maximum length");
+                    result = usage();
+                    goto cleanup;
+                }
+
+                overrideOutputFormat = JS_TRUE;
+                strcpy(argOutputFormat, argv[i]);
             }
             else if (strcasecmp(parm, "stdin") == 0) {
                 argUseStdin = JS_TRUE;
             }
-            else if (strcasecmp(parm, "conf") == 0 ||
-                strcasecmp(parm, "+conf") == 0) {
+            else if (strcasecmp(parm, "conf") == 0) {
                 /* only allow one config */
                 if (configPath) {
                     fputs("Error: multiple configuration files.\n", stdout);
@@ -1893,8 +1974,7 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
 
                 configPath = argv[i];
             }
-            else if (strcasecmp(parm, "process") == 0 ||
-                strcasecmp(parm, "+process") == 0) {
+            else if (strcasecmp(parm, "process") == 0) {
                 if (++i < argc)
                     AddPathToList(&scriptPaths, argv[i]);
                 else {
@@ -1924,7 +2004,7 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
     }
 
     if (argPrintLogo)
-        fprintf(stdout, "JavaScript Lint %s (%s)\n\n", JSL_VERSION, JS_GetImplementationVersion());
+        PrintHeader();
 
     if (configPath) {
         result = ProcessConf(cx, obj, configPath, &scriptPaths);
@@ -1937,6 +2017,8 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
         gRecurse = argRecurse;
     if (overrideShowContext)
         gShowContext = argShowContext;
+    if (overrideOutputFormat)
+        strcpy(gOutputFormat, argOutputFormat);
 
     if (argUseStdin) {
         ProcessStdin(cx, obj);
