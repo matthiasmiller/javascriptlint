@@ -150,7 +150,10 @@
  * interpreter should define EXPORT_JS_API whereas any client of the library
  * should not.
  */
-#ifdef EXPORT_JS_API
+#ifdef LINK_JS_API
+#define JS_PUBLIC_API(t)    t
+#define JS_PUBLIC_DATA(t)   t
+#elif EXPORT_JS_API
 #define JS_PUBLIC_API(t)    JS_EXPORT_API(t)
 #define JS_PUBLIC_DATA(t)   JS_EXPORT_DATA(t)
 #else
