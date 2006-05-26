@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.2.2"
+#define JSL_VERSION "0.2.3"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -1156,6 +1156,7 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                     if (script)
                         JS_DestroyScript(cx, script);
                     else {
+                        JS_ReportPendingException(cx); //no execution; must be compilation error
                         SetExitCode(EXITCODE_JS_ERROR);
                         return JS_FALSE;
                     }
@@ -1186,11 +1187,11 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
         }
 
         script = JS_CompileScript(cx, obj, contentsPos, strlen(contentsPos), path, 1);
-
         if (script) {
             JS_DestroyScript(cx, script);
             return JS_TRUE;
         }
+        JS_ReportPendingException(cx); //no execution; must be compilation error
         SetExitCode(EXITCODE_JS_ERROR);
         return JS_FALSE;
     }
