@@ -525,16 +525,14 @@ MarkDeclaredIdentifiers(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSP
             /* nasty, but undeclared identifiers aren't warned against until end */
             pn->pn_attrs |= JSPROP_LINT_IGNORE;
         }
-        else if ((pn->pn_attrs & JSPROP_LINT_DECLARED) == 0 &&
-            (pn->pn_attrs & JSPROP_LINT_OK_RET_VAL) == 0) {
+        else if ((pn->pn_attrs & JSPROP_LINT_DECLARED) == 0) {
             JSTreeContext *curtc;
             JSAtomListElement *ale;
 
             curtc = tc;
             while (curtc) {
                 ATOM_LIST_SEARCH(ale, &curtc->decls, pn->pn_atom);
-                /* variables should have been detected previously */
-                if (ale && (ALE_JSOP(ale) == JSOP_DEFFUN || ALE_JSOP(ale) == JSOP_CLOSURE)) {
+                if (ale) {
                     pn->pn_attrs |= JSPROP_LINT_DECLARED;
                     break;
                 }
@@ -1864,13 +1862,6 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             if (cx->lint) {
                 cx->lint->controlCommentsAllowFallthru = JS_FALSE;
 
-                if (tt == TOK_RC && cx->lint->controlCommentsHadFallthru) {
-                    /* fallthru doesn't make sense in the last statement */
-                    if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU))
-                        return NULL;
-                    cx->lint->controlCommentsHadFallthru = JS_FALSE;
-                }
-
                 if (pn3->pn_type == TOK_DEFAULT && tt != TOK_RC &&
                     !js_ReportCompileErrorNumber(cx, ts, NULL,
                                                  JSREPORT_WARNING | JSREPORT_STRICT,
@@ -1894,7 +1885,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                         return NULL;
                     }
                 }
-                else if (tt == TOK_RC) {
+                else if (tt == TOK_RC && !cx->lint->controlCommentsHadFallthru) {
                     /* the last statement must have a break */
                     if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                                      JSREPORT_WARNING | JSREPORT_STRICT,
@@ -3054,6 +3045,13 @@ EqExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                     return NULL;
                 }
             }
+            if (AreExpressionsIdentical(cx, pn->pn_left, pn->pn_right, JS_FALSE) &&
+                !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                             JSREPORT_WARNING |
+                                             JSREPORT_STRICT,
+                                             JSMSG_USELESS_COMPARISON)) {
+                return NULL;    
+            }
         }
     }
     return pn;
@@ -3092,6 +3090,15 @@ RelExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         tt = CURRENT_TOKEN(ts).type;
         op = CURRENT_TOKEN(ts).t_op;
         pn = NewBinary(cx, tt, op, pn, ShiftExpr(cx, ts, tc), tc);
+
+        if (cx->lint && pn && pn->pn_left && pn->pn_right &&
+            AreExpressionsIdentical(cx, pn->pn_left, pn->pn_right, JS_FALSE) &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING |
+                                         JSREPORT_STRICT,
+                                         JSMSG_USELESS_COMPARISON)) {
+            return NULL;    
+        }
     }
 #if JS_HAS_IN_OPERATOR
     /* Restore previous state of inForInit flag. */

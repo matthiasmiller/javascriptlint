@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1k"
+#define JSL_VERSION "0.1l"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -138,8 +138,7 @@ const char *placeholders[] = {
     ((errnum) == JSMSG_EQUAL_AS_ASSIGN) || \
     ((errnum) == JSMSG_VAR_HIDES_ARG) || \
     ((errnum) == JSMSG_REDECLARED_VAR) || \
-    ((errnum) == JSMSG_ANON_NO_RETURN_VALUE) || \
-    ((errnum) == JSMSG_USELESS_EXPR)) && \
+    ((errnum) == JSMSG_ANON_NO_RETURN_VALUE)) && \
     ((errnum) != JSMSG_UNDECLARED_IDENTIFIER))
 
 #define WARNING_PREFIX          "warning";

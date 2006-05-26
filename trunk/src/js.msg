@@ -283,3 +283,4 @@ MSG_DEF(JSMSG_DUPLICATE_CASE_IN_SWITCH,200, 0, JSEXN_SYNTAXERR, "duplicate case 
 MSG_DEF(JSMSG_DEFAULT_NOT_AT_END,     201, 0, JSEXN_SYNTAXERR, "the default case is not at the end of the switch statement")
 MSG_DEF(JSMSG_LEGACY_CC_NOT_UNDERSTOOD,202, 0, JSEXN_SYNTAXERR, "couldn't understand control comment using /*@keyword@*/ syntax")
 MSG_DEF(JSMSG_JSL_CC_NOT_UNDERSTOOD,  203, 0, JSEXN_SYNTAXERR, "couldn't understand control comment using /*jsl:keyword*/ syntax")
+MSG_DEF(JSMSG_USELESS_COMPARISON,     204, 0, JSEXN_SYNTAXERR, "useless comparison; comparing identical expressions")

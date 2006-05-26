@@ -127,7 +127,6 @@ JS_BEGIN_EXTERN_C
 #define JSPROP_INDEX            0x80    /* name is actually (jsint) index */
 #define JSPROP_LINT_IGNORE     0x100    /* should ignore per control comment */
 #define JSPROP_LINT_DECLARED   0x200    /* name is declared */
-#define JSPROP_LINT_OK_RET_VAL 0x400    /* already checked for use of return value */
 
 /* Function flags, set in JSFunctionSpec and passed to JS_NewFunction etc. */
 #define JSFUN_LAMBDA            0x08    /* expressed, not declared, function */
