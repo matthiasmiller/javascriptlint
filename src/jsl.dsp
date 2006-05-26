@@ -236,6 +236,10 @@ SOURCE=.\js.msg
 # End Source File
 # Begin Source File
 
+SOURCE=".\jsl-test.htm"
+# End Source File
+# Begin Source File
+
 SOURCE=".\jsl-test.js"
 # End Source File
 # Begin Source File
