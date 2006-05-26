@@ -232,10 +232,6 @@ SOURCE=.\resource.h
 # End Group
 # Begin Source File
 
-SOURCE=.\Checklist.txt
-# End Source File
-# Begin Source File
-
 SOURCE=.\js.msg
 # End Source File
 # Begin Source File
@@ -244,15 +240,7 @@ SOURCE=".\jsl-test.js"
 # End Source File
 # Begin Source File
 
-SOURCE=.\jsl.default.conf
-# End Source File
-# Begin Source File
-
 SOURCE=.\jsopcode.tbl
-# End Source File
-# Begin Source File
-
-SOURCE=.\jsshell.msg
 # End Source File
 # End Target
 # End Project

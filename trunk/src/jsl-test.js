@@ -368,7 +368,7 @@ function EndOfLine() {
     }
     switch (1)
     {
-    case 1:
+    default:
         break;
     }
     for (i = 0; i < 1; i++)
@@ -499,11 +499,12 @@ function BlockWithoutBraces() {
     /* illegal */
     if (i)
         for (i = 0; i < 1; i++) {
+            i++;
         }
 }
 
-function MissingBreak() {
-    var i, s;
+function SwitchStatements() {
+    var i, o, s;
 
     switch (i) {
       /* okay because of return */
@@ -532,8 +533,135 @@ function MissingBreak() {
         s += ";";
         throw s;
 
+      case 4:
+        /*okay because of break/throw*/
+        if (s) {
+            break;
+        }
+        else {
+            throw i;
+        }
+
+      case 5:
+        /*missing break in catch*/
+        try {
+            i--;
+            break;
+        }
+        catch (err) {
+            s = null;
+        }
+        finally {
+            i++;
+        }
+
+      case 6:
+        /*ok; finally statement never called*/
+        try {
+            i--;
+            break;
+        }
+        catch (err) {
+            s = null;
+            break;
+        }
+        finally {
+            i++;
+        }
+
+      case 7:
+        /*ok; break statement in catch and finally*/
+        try {
+            i--;
+        }
+        catch (err) {
+            s = null;
+            break;
+        }
+        finally {
+            i++;
+            break;
+        }
+
       default:
         /*missing break*/
+    }
+
+    /*missing default case*/
+    switch (i) {
+      case 1:
+        return 1;
+    }
+
+    /* mistake - invalid use of fallthru */
+    /*@fallthru@*/
+    switch (i) {
+      /*@fallthru@*/
+      case /*@fallthru@*/1:
+        break;
+      default:
+        /*@fallthru@*/
+    }
+
+    /* ambivalence - allow fallthru but don't enforce it */
+    switch (i) {
+      case 2:
+        /*@fallthru@*/
+      case 3:
+        s += 1;
+        break;
+      default:
+        break;
+    }
+
+    /* ok - intended use of fallthru */
+    switch (i) {
+      case 0:
+        s += "?";
+        /*@fallthru@*/
+      case 1:
+        s += "!";
+        break;
+      default:
+        break;
+    }
+
+    switch (i) {
+      case i:
+        s += "...";
+        break;
+      case -1:
+        s = "";
+        break;
+      case SwitchStatements():
+        s = "0";
+        break;
+      case o.prop:
+        i = 4;
+        break;
+
+      /* mistake - duplicated */
+      case i:
+        s = "~";
+        break;
+
+      /* mistake - duplicated */
+      case -1:
+        s = "!";
+        break;
+
+      /* mistake - duplicated */
+      case SwitchStatements():
+        s = "";
+        break;
+
+      /* mistake - duplicated */
+      case o['prop']:
+        s = i;
+        break;
+
+      default:
+        break;
     }
 
     return "";
@@ -558,9 +686,14 @@ function MeaninglessBlock() {
 function Comma() {
     var b, i, j;
 
-    /* comma (arguably legit) */
+    /* comma (legit) */
     for (i = 0, j = 0; i < 10; i += 2, j += 4) {
         b = ((i + j) / 2 == i - j);
+    }
+
+    /* comma (unclear) */
+    for (i = 0; i < 10, j > 20; i++) {
+        j = i;
     }
 
     /* comma (unclear) */
@@ -692,6 +825,8 @@ function IncDec() {
     /* illegal */
     switch (i--)
     {
+    default:
+        break;
     }
 
     /* illegal */

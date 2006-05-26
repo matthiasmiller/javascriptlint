@@ -110,6 +110,7 @@ struct JSTreeContext {              /* tree context for semantic checks */
 #define TCF_FUN_USES_NONLOCALS 0x40 /* function refers to non-local names */
 #define TCF_FUN_HEAVYWEIGHT    0x80 /* function needs Call object per call */
 #define TCF_FUN_FLAGS          0xE0 /* flags to propagate from FunctionBody */
+#define TCF_IN_FOR_POST       0x100 /* parsing post expr of for (lint) */
 
 #define TREE_CONTEXT_INIT(tc)                                                 \
     ((tc)->flags = 0, (tc)->tryCount = 0, (tc)->topStmt = NULL,               \
