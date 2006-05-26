@@ -470,7 +470,8 @@ JS_SetGlobalObject(JSContext *cx, JSObject *obj);
 
 extern JS_PUBLIC_API(JSBool)
 JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
-                      JSBool alwaysUseOptionExplicit, JSLImportCallback importCallback, void *parms);
+                      JSBool alwaysUseOptionExplicit, JSBool lambdaAssignRequiresSemicolon,
+                      JSLImportCallback importCallback, void *parms);
 
 extern JS_PUBLIC_API(void)
 JS_PopLintIdentifers(JSContext *cx);

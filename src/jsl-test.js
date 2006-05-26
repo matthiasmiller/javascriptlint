@@ -1,6 +1,6 @@
-/*@option explicit@*/
+/*jsl:option explicit*/
 
-/* illegal - j is not declared */
+/* legal - j is declared */
 var g = j;
 var j;
 
@@ -607,8 +607,14 @@ function SwitchStatements() {
         }
 
       default:
-        /*missing break*/
+        /*missing break at end of switch (without code)*/
     }
+
+	/*missing break at end of switch (with code)*/
+	switch (i) {
+	  case i:
+	     i++;
+	}
 
     /*missing default case*/
     switch (i) {
@@ -616,20 +622,29 @@ function SwitchStatements() {
         return 1;
     }
 
-    /* mistake - invalid use of fallthru */
-    /*@fallthru@*/
+    /*default case at top*/
     switch (i) {
-      /*@fallthru@*/
-      case /*@fallthru@*/1:
+	  default:
+		i++;
+		break;
+      case 1:
+        return 1;
+    }
+
+    /* mistake - invalid use of fallthru */
+    /*jsl:fallthru*/
+    switch (i) {
+      /*jsl:fallthru*/
+      case /*jsl:fallthru*/1:
         break;
       default:
-        /*@fallthru@*/
+        /*jsl:fallthru*/
     }
 
     /* ambivalence - allow fallthru but don't enforce it */
     switch (i) {
       case 2:
-        /*@fallthru@*/
+        /*jsl:fallthru*/
       case 3:
         s += 1;
         break;
@@ -641,7 +656,7 @@ function SwitchStatements() {
     switch (i) {
       case 0:
         s += "?";
-        /*@fallthru@*/
+        /*jsl:fallthru*/
       case 1:
         s += "!";
         break;
@@ -712,6 +727,20 @@ function SwitchStatements() {
 
 function SemicolonOnReturnStatement() {
     return
+}
+
+function MissingSemicolon() {
+	/* missing semicolon after return */
+	/* missing semicolon after lambda */
+	function x() {
+		this.y = function() { return 0 }
+	}
+
+	/* missing semicolon after return */
+	/* missing semicolon after lambda */
+	x.prototype.z = function() {
+		return 1
+	}
 }
 
 function MeaninglessBlock() {
@@ -928,9 +957,9 @@ g = FunctionWithNoReturn();
 /* legal */
 FunctionWithNoReturn();
 
-/*@ignore@*/
+/*jsl:ignore*/
 g = FunctionWithNoReturn();
-/*@end@*/
+/*jsl:end*/
 
 function FunctionWithReturn() {
     var i, o;
@@ -1025,6 +1054,12 @@ function Comparisons() {
 }
 
 /* "legal" - can do anything */
+/*jsl:ignore*/
+var a;
+if (a);
+   var b = a = b+++a;
+   var a = b;
+/*jsl:end*/
 /*@ignore@*/
 var a;
 if (a);
@@ -1033,24 +1068,24 @@ if (a);
 /*@end@*/
 
 /* legal - case doesn't matter */
-/*@IGNORE@*/
+/*Jsl:IGNORE*/
 asdf = asdf;
-/*@End@*/
+/*JSL:End*/
 
-/* illegal - missing start/end */
-/*control comment ends but doesn't start@*/
+/* illegal - missing end */
 /*@control comment starts but doesn't end*/
 
 /* illegal - unrecognized */
 /*@bogon@*/
+/*jsl:bogon*/
 
 /* illegal - not ending anything */
-/*@end@*/
+/*jsl:end*/
 
 /* illegal - can't start twice */
-/*@ignore@*/
-/*@ignore@*/
-/*@end@*/
+/*jsl:ignore*/
+/*jsl:ignore*/
+/*jsl:end*/
 
 /* illegal - don't forget to end */
-/*@ignore@*/
+/*jsl:ignore*/

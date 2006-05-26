@@ -333,14 +333,21 @@ struct JSLObjectList {
     JSObject            *obj;
 };
 
+typedef struct JSLImportPathList {
+    JSCList links;
+    char *importPath;
+} JSLImportPathList;
+
 typedef struct JSLint {
     JSObject            *scriptIdentifiers; /* contains identifiers declared in this script */
     JSLObjectList       *dependencyList;    /* contains identifiers declared in dependencies (scripts) */
 
     JSLImportCallback   importCallback;
     void                *importCallbackParms;
+    JSLImportPathList   *importPaths;
 
     JSBool              alwaysUseOptionExplicit;
+    JSBool              lambdaAssignRequiresSemicolon;
 
     JSBool              hasCompletedPartialScript;
 
@@ -375,7 +382,7 @@ struct JSContext {
     /* Stack arena pool and frame pointer register. */
     JSArenaPool         stackPool;
     JSStackFrame        *fp;
-    
+
     /* Temporary arena pool used while compiling and decompiling. */
     JSArenaPool         tempPool;
 

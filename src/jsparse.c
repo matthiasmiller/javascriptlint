@@ -460,8 +460,7 @@ WarnUndeclaredIdentifiers(JSCodeGenerator *cg, JSContext *cx, JSTokenStream *ts,
             curtc = tc;
             while (curtc) {
                 ATOM_LIST_SEARCH(ale, &curtc->decls, pn->pn_atom);
-                if (ale && (ALE_JSOP(ale) == JSOP_DEFFUN || ALE_JSOP(ale) == JSOP_CLOSURE)) {
-                /* variables should have been detected previously */
+                if (ale) {
                     break;
                 }
                 else {
@@ -645,6 +644,25 @@ js_CompileTokenStream(JSContext *cx, JSObject *chain, JSTokenStream *ts,
         }
         /* forcibly turn off ignore so undeclared identifier warnings are displayed */
         cx->lint->controlCommentsIgnore = JS_FALSE;
+
+        /*
+         * Two files may have import directives pointing to each other. All import directives
+         * must be processed after the entire script has been examined to allow such files to
+         * recognize each other's identifiers.
+         */
+        if (cx->lint->importPaths) {
+            while (!JS_CLIST_IS_EMPTY(&cx->lint->importPaths->links)) {
+                JSLImportPathList *curPath;
+                curPath = (JSLImportPathList*)JS_LIST_HEAD(&cx->lint->importPaths->links);
+                JS_REMOVE_LINK(&curPath->links);
+
+                if (cx->lint->importCallback)
+                    cx->lint->importCallback(cx, curPath->importPath, cx->lint->importCallbackParms);
+
+                JS_free(cx, curPath->importPath);
+                JS_free(cx, curPath);
+            }
+        }
 
         if (ok) {
             if (cx->lint->alwaysUseOptionExplicit || cx->lint->controlCommentsOptionExplicit) {
@@ -1853,13 +1871,20 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                     cx->lint->controlCommentsHadFallthru = JS_FALSE;
                 }
 
+                if (pn3->pn_type == TOK_DEFAULT && tt != TOK_RC &&
+                    !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 JSREPORT_WARNING | JSREPORT_STRICT,
+                                                 JSMSG_DEFAULT_NOT_AT_END)) {
+                    return NULL;
+                }
+
                 if (pn4->pn_head) {
                     if (HasFinalReturn(PN_LAST(pn4), JS_TRUE) == ENDS_IN_OTHER) {
                         /* must have fallthru or return/break statement on non-empty case */
                         if (!cx->lint->controlCommentsHadFallthru &&
                             !js_ReportCompileErrorNumber(cx, ts, NULL,
                                                          JSREPORT_WARNING | JSREPORT_STRICT,
-                                                         JSMSG_MISSING_BREAK)) {
+                                                         (tt == TOK_RC) ? JSMSG_MISSING_BREAK_FOR_LAST_CASE : JSMSG_MISSING_BREAK)) {
                             return NULL;
                         }
                     }
@@ -1873,7 +1898,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                     /* the last statement must have a break */
                     if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                                      JSREPORT_WARNING | JSREPORT_STRICT,
-                                                     JSMSG_MISSING_BREAK)) {
+                                                     JSMSG_MISSING_BREAK_FOR_LAST_CASE)) {
                         return NULL;
                     }
                 }
@@ -2509,12 +2534,21 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         }
     }
 
-    if (!js_MatchToken(cx, ts, TOK_SEMI)) {
-        if (cx->lint &&
-            !js_ReportCompileErrorNumber(cx, ts, NULL,
-                                         JSREPORT_WARNING |
-                                         JSREPORT_STRICT,
-                                         JSMSG_MISSING_SEMICOLON)) {
+    if (!js_MatchToken(cx, ts, TOK_SEMI) && cx->lint) {
+        if (!cx->lint->lambdaAssignRequiresSemicolon &&
+            pn &&
+            pn->pn_type == TOK_SEMI &&
+            pn->pn_kid &&
+            pn->pn_kid->pn_type == TOK_ASSIGN &&
+            pn->pn_kid->pn_right &&
+            pn->pn_kid->pn_right->pn_type == TOK_FUNCTION &&
+            pn->pn_kid->pn_right->pn_op == JSOP_ANONFUNOBJ) {
+            /* disregard missing semicolon */
+        }
+        else if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                              JSREPORT_WARNING |
+                                              JSREPORT_STRICT,
+                                              JSMSG_MISSING_SEMICOLON)) {
             return NULL;
         }
     }
@@ -3423,7 +3457,7 @@ MemberExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
 }
 
 static JSBool
-MarkIfDefined(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn)
+MarkIfDeclared(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn)
 {
     JSAtomListElement *ale;
     JSAtom *atom;
@@ -3805,7 +3839,7 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 }
             }
 
-            if (cx->lint && !MarkIfDefined(cx, ts, tc, pn))
+            if (cx->lint && !MarkIfDeclared(cx, ts, tc, pn))
                 return NULL;
         }
         break;
