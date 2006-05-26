@@ -348,6 +348,7 @@ typedef struct JSLint {
 
     JSBool              alwaysUseOptionExplicit;
     JSBool              lambdaAssignRequiresSemicolon;
+    JSBool              enableLegacyControlComments;
 
     JSBool              hasCompletedPartialScript;
 

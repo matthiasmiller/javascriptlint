@@ -853,7 +853,7 @@ js_MatchedEntireControlComment(JSLControlComment *jslCC, const char *str)
 }
 
 JSBool
-js_StartControlComment(JSTokenStream *ts, JSLControlComment *jslCC)
+js_StartControlComment(JSTokenStream *ts, JSLint *lint, JSLControlComment *jslCC)
 {
     /*
      * Both JavaScript Lint and the JScript interpreter (for example, Internet Explorer) confuse each other
@@ -870,7 +870,7 @@ js_StartControlComment(JSTokenStream *ts, JSLControlComment *jslCC)
         SkipChars(ts, 4);
         jslCC->isAtFormat = JS_FALSE;
     }
-    else if (MatchChar(ts, '@')) {
+    else if (lint->enableLegacyControlComments && MatchChar(ts, '@')) {
         /* legacy format */
         jslCC->isAtFormat = JS_TRUE;
     }
@@ -1509,7 +1509,7 @@ skipline:
             JSBool useCC = JS_FALSE;
 
             if (cx->lint)
-                useCC = js_StartControlComment(ts, &jslCC);
+                useCC = js_StartControlComment(ts, cx->lint, &jslCC);
 
             while ((c = GetChar(ts)) != EOF &&
                 !(c == '*' && MatchChar(ts, '/'))) {
