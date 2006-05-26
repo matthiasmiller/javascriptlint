@@ -201,8 +201,14 @@ script_compile(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
         principals = NULL;
     }
 
-    /* Compile the new script using the caller's scope chain, a la eval(). */
-    fp->flags |= JSFRAME_EVAL;
+    /*
+     * Compile the new script using the caller's scope chain, a la eval().
+     * Unlike jsobj.c:obj_eval, however, we do not set JSFRAME_EVAL in fp's
+     * flags, because compilation is here separated from execution, and the
+     * run-time scope chain may not match the compile-time.  JSFRAME_EVAL is
+     * tested in jsemit.c and jsscan.c to optimize based on identity of run-
+     * and compile-time scope.
+     */
     script = JS_CompileUCScriptForPrincipals(cx, scopeobj, principals,
                                              JSSTRING_CHARS(str),
                                              JSSTRING_LENGTH(str),
@@ -419,7 +425,8 @@ js_XDRScript(JSXDRState *xdr, JSScript **scriptp, JSBool *hasMagic)
     if (xdr->mode == JSXDR_ENCODE) {
         length = script->length;
         prologLength = PTRDIFF(script->main, script->code, jsbytecode);
-        version = (int32)script->version;
+        JS_ASSERT((int16)script->version != JSVERSION_UNKNOWN);
+        version = (uint32)script->version | (script->numGlobalVars << 16);
         lineno = (uint32)script->lineno;
         depth = (uint32)script->depth;
 
@@ -461,7 +468,8 @@ js_XDRScript(JSXDRState *xdr, JSScript **scriptp, JSBool *hasMagic)
             return JS_FALSE;
         if (magic >= JSXDR_MAGIC_SCRIPT_2) {
             script->main += prologLength;
-            script->version = (JSVersion) version;
+            script->version = (JSVersion) (version & 0xffff);
+            script->numGlobalVars = (uint16) (version >> 16);
 
             /* If we know nsrcnotes, we allocated space for notes in script. */
             if (magic >= JSXDR_MAGIC_SCRIPT_4)
@@ -473,7 +481,7 @@ js_XDRScript(JSXDRState *xdr, JSScript **scriptp, JSBool *hasMagic)
     /*
      * Control hereafter must goto error on failure, in order for the DECODE
      * case to destroy script and conditionally free notes, which if non-null
-     * in the (DECODE and version < _4) case must point at a temporary vector
+     * in the (DECODE and magic < _4) case must point at a temporary vector
      * allocated just below.
      */
     if (!JS_XDRBytes(xdr, (char *)script->code, length * sizeof(jsbytecode)) ||
@@ -571,6 +579,7 @@ js_XDRScript(JSXDRState *xdr, JSScript **scriptp, JSBool *hasMagic)
                 script->trynotes = (JSTryNote *)
                                    ((jsword)(SCRIPT_NOTES(script) + nsrcnotes) &
                                     ~(jsword)JSTRYNOTE_ALIGNMASK);
+                memset(script->trynotes, 0, ntrynotes * sizeof(JSTryNote));
             }
         }
     }
@@ -895,7 +904,7 @@ typedef struct ScriptFilenameEntry {
 } ScriptFilenameEntry;
 
 JS_STATIC_DLL_CALLBACK(JSHashEntry *)
-js_alloc_entry(void *priv, const void *key)
+js_alloc_sftbl_entry(void *priv, const void *key)
 {
     size_t nbytes = offsetof(ScriptFilenameEntry, filename) + strlen(key) + 1;
 
@@ -903,7 +912,7 @@ js_alloc_entry(void *priv, const void *key)
 }
 
 JS_STATIC_DLL_CALLBACK(void)
-js_free_entry(void *priv, JSHashEntry *he, uintN flag)
+js_free_sftbl_entry(void *priv, JSHashEntry *he, uintN flag)
 {
     if (flag != HT_FREE_ENTRY)
         return;
@@ -912,7 +921,7 @@ js_free_entry(void *priv, JSHashEntry *he, uintN flag)
 
 static JSHashAllocOps table_alloc_ops = {
     js_alloc_table_space,   js_free_table_space,
-    js_alloc_entry,         js_free_entry
+    js_alloc_sftbl_entry,   js_free_sftbl_entry
 };
 
 JSBool
@@ -962,7 +971,7 @@ js_FinishRuntimeScriptState(JSContext *cx)
 }
 
 #ifdef DEBUG_brendan
-size_t sft_savings = 0;
+size_t sftbl_savings = 0;
 #endif
 
 const char *
@@ -981,7 +990,7 @@ js_SaveScriptFilename(JSContext *cx, const char *filename)
     sfe = (ScriptFilenameEntry *) *hep;
 #ifdef DEBUG_brendan
     if (sfe)
-        sft_savings += strlen(sfe->filename);
+        sftbl_savings += strlen(sfe->filename);
 #endif
     if (!sfe) {
         sfe = (ScriptFilenameEntry *)
@@ -1035,7 +1044,7 @@ js_SweepScriptFilenames(JSRuntime *rt)
                                  js_script_filename_sweeper,
                                  rt);
 #ifdef DEBUG_brendan
-    printf("script filename table savings so far: %u\n", sft_savings);
+    printf("script filename table savings so far: %u\n", sftbl_savings);
 #endif
 }
 
@@ -1062,6 +1071,7 @@ js_NewScript(JSContext *cx, uint32 length, uint32 nsrcnotes, uint32 ntrynotes)
         script->trynotes = (JSTryNote *)
                            ((jsword)(SCRIPT_NOTES(script) + nsrcnotes) &
                             ~(jsword)JSTRYNOTE_ALIGNMASK);
+        memset(script->trynotes, 0, ntrynotes * sizeof(JSTryNote));
     }
     return script;
 }
@@ -1085,6 +1095,7 @@ js_NewScriptFromCG(JSContext *cx, JSCodeGenerator *cg, JSFunction *fun)
     script->main += prologLength;
     memcpy(script->code, CG_PROLOG_BASE(cg), prologLength * sizeof(jsbytecode));
     memcpy(script->main, CG_BASE(cg), mainLength * sizeof(jsbytecode));
+    script->numGlobalVars = cg->treeContext.numGlobalVars;
     if (!js_InitAtomMap(cx, &script->atomMap, &cg->atomList))
         goto bad;
 
@@ -1124,25 +1135,10 @@ js_CallNewScriptHook(JSContext *cx, JSScript *script, JSFunction *fun)
     rt = cx->runtime;
     hook = rt->newScriptHook;
     if (hook) {
-        /*
-         * We use a dummy stack frame to protect the script from a GC caused
-         * by debugger-hook execution.
-         *
-         * XXX We really need a way to manage local roots and such more
-         * XXX automatically, at which point we can remove this one-off hack
-         * XXX and others within the engine.  See bug 40757 for discussion.
-         */
-        JSStackFrame dummy;
-
-        memset(&dummy, 0, sizeof dummy);
-        dummy.down = cx->fp;
-        dummy.script = script;
-        cx->fp = &dummy;
-
+        JS_KEEP_ATOMS(rt);
         hook(cx, script->filename, script->lineno, script, fun,
              rt->newScriptHookData);
-
-        cx->fp = dummy.down;
+        JS_UNKEEP_ATOMS(rt);
     }
 }
 
@@ -1216,7 +1212,8 @@ js_PCToLineNumber(JSContext *cx, JSScript *script, jsbytecode *pc)
     if (*pc == JSOP_DEFFUN) {
         atom = GET_ATOM(cx, script, pc);
         fun = (JSFunction *) JS_GetPrivate(cx, ATOM_TO_OBJECT(atom));
-        return fun->script->lineno;
+        JS_ASSERT(fun->interpreted);
+        return fun->u.script->lineno;
     }
 
     /*

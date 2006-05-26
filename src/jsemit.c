@@ -59,6 +59,7 @@
 #include "jsnum.h"
 #include "jsopcode.h"
 #include "jsparse.h"
+#include "jsregexp.h"
 #include "jsscan.h"
 #include "jsscope.h"
 #include "jsscript.h"
@@ -228,6 +229,7 @@ js_EmitN(JSContext *cx, JSCodeGenerator *cg, JSOp op, size_t extra)
 
 /* XXX too many "... statement" L10N gaffes below -- fix via js.msg! */
 const char js_with_statement_str[] = "with statement";
+const char js_script_str[]         = "script";
 
 static const char *statementName[] = {
     "block",                 /* BLOCK */
@@ -249,7 +251,7 @@ static const char *
 StatementName(JSCodeGenerator *cg)
 {
     if (!cg->treeContext.topStmt)
-        return "script";
+        return js_script_str;
     return statementName[cg->treeContext.topStmt->type];
 }
 
@@ -1497,6 +1499,93 @@ js_LookupCompileTimeConstant(JSContext *cx, JSCodeGenerator *cg, JSAtom *atom,
 }
 
 /*
+ * Allocate an index invariant for all activations of the code being compiled
+ * in cg, that can be used to store and fetch a reference to a cloned RegExp
+ * object that shares the same JSRegExp private data created for the object
+ * literal in pn->pn_atom.  We need clones to hold lastIndex and other direct
+ * properties that should not be shared among threads sharing a precompiled
+ * function or script.
+ *
+ * If the code being compiled is function code, allocate a reserved slot in
+ * the cloned function object that shares its precompiled script with other
+ * cloned function objects and with the compiler-created clone-parent.  There
+ * are fun->nregexps such reserved slots in each function object cloned from
+ * fun->object.  NB: during compilation, funobj slots must never be allocated,
+ * because js_AllocSlot could hand out one of the slots that should be given
+ * to a regexp clone.
+ *
+ * If the code being compiled is global code, reserve the fp->vars slot at
+ * ALE_INDEX(ale), by ensuring that cg->treeContext.numGlobalVars is at least
+ * one more than this index.  For global code, fp->vars is parallel to the
+ * global script->atomMap.vector array, but possibly shorter for the common
+ * case (where var declarations and regexp literals cluster toward the front
+ * of the script or function body).
+ *
+ * Global variable name literals in script->atomMap have fast-global slot
+ * numbers (stored as int-tagged jsvals) in the corresponding fp->vars array
+ * element.  The atomIndex for a regexp object literal thus also addresses an
+ * fp->vars element that is not used by any optimized global variable, so we
+ * use that GC-scanned element to keep the regexp object clone alive, as well
+ * as to lazily create and find it at run-time for the JSOP_REGEXP bytecode.
+ *
+ * In no case can cx->fp->varobj be a Call object here, because that implies
+ * we are compiling eval code, in which case (cx->fp->flags & JSFRAME_EVAL)
+ * is true, and js_GetToken will have already selected JSOP_OBJECT instead of
+ * JSOP_REGEXP, to avoid all this RegExp object cloning business.
+ *
+ * Why clone regexp objects?  ECMA specifies that when a regular expression
+ * literal is scanned, a RegExp object is created.  In the spec, compilation
+ * and execution happen indivisibly, but in this implementation and many of
+ * its embeddings, code is precompiled early and re-executed in multiple
+ * threads, or using multiple global objects, or both, for efficiency.
+ *
+ * In such cases, naively following ECMA leads to wrongful sharing of RegExp
+ * objects, which makes for collisions on the lastIndex property (especially
+ * for global regexps) and on any ad-hoc properties.  Also, __proto__ and
+ * __parent__ refer to the pre-compilation prototype and global objects, a
+ * pigeon-hole problem for instanceof tests.
+ */
+static JSBool
+IndexRegExpClone(JSContext *cx, JSParseNode *pn, JSAtomListElement *ale,
+                 JSCodeGenerator *cg)
+{
+    JSObject *varobj, *reobj;
+    JSClass *clasp;
+    JSFunction *fun;
+    JSRegExp *re;
+    uint16 *countPtr;
+    uintN cloneIndex;
+
+    JS_ASSERT(!(cx->fp->flags & (JSFRAME_EVAL | JSFRAME_COMPILE_N_GO)));
+
+    varobj = cx->fp->varobj;
+    clasp = OBJ_GET_CLASS(cx, varobj);
+    if (clasp == &js_FunctionClass) {
+        fun = (JSFunction *) JS_GetPrivate(cx, varobj);
+        countPtr = &fun->nregexps;
+        cloneIndex = *countPtr;
+    } else {
+        JS_ASSERT(clasp != &js_CallClass);
+        countPtr = &cg->treeContext.numGlobalVars;
+        cloneIndex = ALE_INDEX(ale);
+    }
+
+    if ((cloneIndex + 1) >> 16) {
+        JS_ReportErrorNumber(cx, js_GetErrorMessage, NULL,
+                             JSMSG_NEED_DIET, js_script_str);
+        return JS_FALSE;
+    }
+    if (cloneIndex >= *countPtr)
+        *countPtr = cloneIndex + 1;
+
+    reobj = ATOM_TO_OBJECT(pn->pn_atom);
+    JS_ASSERT(OBJ_GET_CLASS(cx, reobj) == &js_RegExpClass);
+    re = (JSRegExp *) JS_GetPrivate(cx, reobj);
+    re->cloneIndex = cloneIndex;
+    return JS_TRUE;
+}
+
+/*
  * Emit a bytecode and its 2-byte constant (atom) index immediate operand.
  * NB: We use cx and cg from our caller's lexical environment, and return
  * false on error.
@@ -1516,6 +1605,8 @@ EmitAtomOp(JSContext *cx, JSParseNode *pn, JSOp op, JSCodeGenerator *cg)
 
     ale = js_IndexAtom(cx, pn->pn_atom, &cg->atomList);
     if (!ale)
+        return JS_FALSE;
+    if (op == JSOP_REGEXP && !IndexRegExpClone(cx, pn, ale, cg))
         return JS_FALSE;
     EMIT_ATOM_INDEX_OP(op, ALE_INDEX(ale));
     return JS_TRUE;
@@ -1538,11 +1629,18 @@ EmitAtomOp(JSContext *cx, JSParseNode *pn, JSOp op, JSCodeGenerator *cg)
 static JSBool
 LookupArgOrVar(JSContext *cx, JSTreeContext *tc, JSParseNode *pn)
 {
+    JSStackFrame *fp;
     JSObject *obj, *pobj;
     JSClass *clasp;
+    JSBool optimizeGlobals;
     JSAtom *atom;
+    JSProperty *prop;
     JSScopeProperty *sprop;
     JSOp op;
+    JSPropertyOp getter;
+    uintN attrs;
+    jsint slot;
+    JSAtomListElement *ale;
 
     JS_ASSERT(pn->pn_type == TOK_NAME);
     if (pn->pn_slot >= 0 || pn->pn_op == JSOP_ARGUMENTS)
@@ -1560,10 +1658,23 @@ LookupArgOrVar(JSContext *cx, JSTreeContext *tc, JSParseNode *pn)
      * We can't optimize if we're not compiling a function body, whether via
      * eval, or directly when compiling a function statement or expression.
      */
-    obj = cx->fp->varobj;
+    fp = cx->fp;
+    obj = fp->varobj;
     clasp = OBJ_GET_CLASS(cx, obj);
-    if (clasp != &js_FunctionClass && clasp != &js_CallClass)
-        return JS_TRUE;
+    if (clasp != &js_FunctionClass && clasp != &js_CallClass) {
+        /*
+         * Optimize global variable accesses if there are at least 100 uses
+         * in unambiguous contexts, or failing that, if least half of all the
+         * uses of global vars/consts/functions are in loops.
+         */
+        optimizeGlobals = (tc->globalUses >= 100 ||
+                           (tc->loopyGlobalUses &&
+                            tc->loopyGlobalUses >= tc->globalUses / 2));
+        if (!optimizeGlobals)
+            return JS_TRUE;
+    } else {
+        optimizeGlobals = JS_FALSE;
+    }
 
     /*
      * We can't optimize if we're in an eval called inside a with statement,
@@ -1571,67 +1682,121 @@ LookupArgOrVar(JSContext *cx, JSTreeContext *tc, JSParseNode *pn)
      * block whose exception variable has the same name as pn.
      */
     atom = pn->pn_atom;
-    if (cx->fp->scopeChain != obj ||
+    if (fp->scopeChain != obj ||
         js_InWithStatement(tc) ||
         js_InCatchBlock(tc, atom)) {
         return JS_TRUE;
     }
 
-    /*
-     * Ok, we may be able to optimize name to stack slot. Look for an argument
-     * or variable property in the function, or its call object, not found in
-     * any prototype object.  Rewrite pn_op and update pn accordingly.  NB: We
-     * know that JSOP_DELNAME on an argument or variable must evaluate to
-     * false, due to JSPROP_PERMANENT.
-     */
-    if (!js_LookupProperty(cx, obj, (jsid)atom, &pobj, (JSProperty **)&sprop))
-        return JS_FALSE;
     op = pn->pn_op;
-    if (sprop) {
-        if (pobj == obj) {
-            JSPropertyOp getter = sprop->getter;
-
-            if (getter == js_GetArgument) {
-                switch (op) {
-                  case JSOP_NAME:     op = JSOP_GETARG; break;
-                  case JSOP_SETNAME:  op = JSOP_SETARG; break;
-                  case JSOP_INCNAME:  op = JSOP_INCARG; break;
-                  case JSOP_NAMEINC:  op = JSOP_ARGINC; break;
-                  case JSOP_DECNAME:  op = JSOP_DECARG; break;
-                  case JSOP_NAMEDEC:  op = JSOP_ARGDEC; break;
-                  case JSOP_FORNAME:  op = JSOP_FORARG; break;
-                  case JSOP_DELNAME:  op = JSOP_FALSE; break;
-                  default: JS_ASSERT(0);
-                }
-            } else if (getter == js_GetLocalVariable ||
-                       getter == js_GetCallVariable)
-            {
-                switch (op) {
-                  case JSOP_NAME:     op = JSOP_GETVAR; break;
-                  case JSOP_SETNAME:  op = JSOP_SETVAR; break;
-                  case JSOP_SETCONST: op = JSOP_SETVAR; break;
-                  case JSOP_INCNAME:  op = JSOP_INCVAR; break;
-                  case JSOP_NAMEINC:  op = JSOP_VARINC; break;
-                  case JSOP_DECNAME:  op = JSOP_DECVAR; break;
-                  case JSOP_NAMEDEC:  op = JSOP_VARDEC; break;
-                  case JSOP_FORNAME:  op = JSOP_FORVAR; break;
-                  case JSOP_DELNAME:  op = JSOP_FALSE; break;
-                  default: JS_ASSERT(0);
-                }
-            }
-            if (op != pn->pn_op) {
-                pn->pn_op = op;
-                pn->pn_slot = sprop->shortid;
-            }
-            pn->pn_attrs = sprop->attrs;
+    getter = NULL;
+#ifdef __GNUC__
+    attrs = slot = 0;   /* quell GCC overwarning */
+#endif
+    if (optimizeGlobals) {
+        /*
+         * We are optimizing global variables, and there is no pre-existing
+         * global property named atom.  If atom was declared via const or var,
+         * optimize pn to access fp->vars using the appropriate JOF_QVAR op.
+         */
+        ATOM_LIST_SEARCH(ale, &tc->decls, atom);
+        if (!ale) {
+            /* Use precedes declaration, or name is never declared. */
+            return JS_TRUE;
         }
-        OBJ_DROP_PROPERTY(cx, pobj, (JSProperty *)sprop);
+
+        attrs = (ALE_JSOP(ale) == JSOP_DEFCONST)
+                ? JSPROP_ENUMERATE | JSPROP_READONLY | JSPROP_PERMANENT
+                : JSPROP_ENUMERATE | JSPROP_PERMANENT;
+
+        /* Index atom so we can map fast global number to name. */
+        JS_ASSERT(tc->flags & TCF_COMPILING);
+        ale = js_IndexAtom(cx, atom, &((JSCodeGenerator *) tc)->atomList);
+        if (!ale)
+            return JS_FALSE;
+
+        /* Defend against tc->numGlobalVars 16-bit overflow. */
+        slot = ALE_INDEX(ale);
+        if ((slot + 1) >> 16)
+            return JS_TRUE;
+
+        if ((uint16)(slot + 1) > tc->numGlobalVars)
+            tc->numGlobalVars = (uint16)(slot + 1);
+    } else {
+        /*
+         * We may be able to optimize name to stack slot. Look for an argument
+         * or variable property in the function, or its call object, not found
+         * in any prototype object.  Rewrite pn_op and update pn accordingly.
+         * NB: We know that JSOP_DELNAME on an argument or variable evaluates
+         * to false, due to JSPROP_PERMANENT.
+         */
+        if (!js_LookupProperty(cx, obj, (jsid)atom, &pobj, &prop))
+            return JS_FALSE;
+        sprop = (JSScopeProperty *) prop;
+        if (sprop) {
+            if (pobj == obj) {
+                getter = sprop->getter;
+                attrs = sprop->attrs;
+                slot = (sprop->flags & SPROP_HAS_SHORTID) ? sprop->shortid : -1;
+            }
+            OBJ_DROP_PROPERTY(cx, pobj, prop);
+        }
+    }
+
+    if (optimizeGlobals || getter) {
+        if (optimizeGlobals) {
+            switch (op) {
+              case JSOP_NAME:     op = JSOP_GETGVAR; break;
+              case JSOP_SETNAME:  op = JSOP_SETGVAR; break;
+              case JSOP_SETCONST: /* NB: no change */ break;
+              case JSOP_INCNAME:  op = JSOP_INCGVAR; break;
+              case JSOP_NAMEINC:  op = JSOP_GVARINC; break;
+              case JSOP_DECNAME:  op = JSOP_DECGVAR; break;
+              case JSOP_NAMEDEC:  op = JSOP_GVARDEC; break;
+              case JSOP_FORNAME:  /* NB: no change */ break;
+              case JSOP_DELNAME:  /* NB: no change */ break;
+              default: JS_ASSERT(0);
+            }
+        } else if (getter == js_GetLocalVariable ||
+                   getter == js_GetCallVariable) {
+            switch (op) {
+              case JSOP_NAME:     op = JSOP_GETVAR; break;
+              case JSOP_SETNAME:  op = JSOP_SETVAR; break;
+              case JSOP_SETCONST: op = JSOP_SETVAR; break;
+              case JSOP_INCNAME:  op = JSOP_INCVAR; break;
+              case JSOP_NAMEINC:  op = JSOP_VARINC; break;
+              case JSOP_DECNAME:  op = JSOP_DECVAR; break;
+              case JSOP_NAMEDEC:  op = JSOP_VARDEC; break;
+              case JSOP_FORNAME:  op = JSOP_FORVAR; break;
+              case JSOP_DELNAME:  op = JSOP_FALSE; break;
+              default: JS_ASSERT(0);
+            }
+        } else if (getter == js_GetArgument ||
+                   (getter == js_CallClass.getProperty &&
+                    fp->fun && (uintN) slot < fp->fun->nargs)) {
+            switch (op) {
+              case JSOP_NAME:     op = JSOP_GETARG; break;
+              case JSOP_SETNAME:  op = JSOP_SETARG; break;
+              case JSOP_INCNAME:  op = JSOP_INCARG; break;
+              case JSOP_NAMEINC:  op = JSOP_ARGINC; break;
+              case JSOP_DECNAME:  op = JSOP_DECARG; break;
+              case JSOP_NAMEDEC:  op = JSOP_ARGDEC; break;
+              case JSOP_FORNAME:  op = JSOP_FORARG; break;
+              case JSOP_DELNAME:  op = JSOP_FALSE; break;
+              default: JS_ASSERT(0);
+            }
+        }
+        if (op != pn->pn_op) {
+            pn->pn_op = op;
+            pn->pn_slot = slot;
+        }
+        pn->pn_attrs = attrs;
     }
 
     if (pn->pn_slot < 0) {
         /*
-         * We couldn't optimize it, so it's not an arg or local var name.  Now
-         * we must check for the predefined arguments variable.  It may be
+         * We couldn't optimize pn, so it's not a global or local slot name.
+         * Now we must check for the predefined arguments variable.  It may be
          * overridden by assignment, in which case the function is heavyweight
          * and the interpreter will look up 'arguments' in the function's call
          * object.
@@ -2456,9 +2621,10 @@ js_EmitFunctionBody(JSContext *cx, JSCodeGenerator *cg, JSParseNode *body,
     if (!ok)
         return JS_FALSE;
 
-    fun->script = js_NewScriptFromCG(cx, cg, fun);
-    if (!fun->script)
+    fun->u.script = js_NewScriptFromCG(cx, cg, fun);
+    if (!fun->u.script)
         return JS_FALSE;
+    fun->interpreted = JS_TRUE;
     if (cg->treeContext.flags & TCF_FUN_HEAVYWEIGHT)
         fun->flags |= JSFUN_HEAVYWEIGHT;
     return JS_TRUE;
@@ -2598,17 +2764,17 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
 #if JS_HAS_LEXICAL_CLOSURE
         if (cg->treeContext.flags & TCF_IN_FUNCTION) {
             JSObject *obj, *pobj;
-            JSScopeProperty *sprop;
+            JSProperty *prop;
             uintN slot;
 
             obj = OBJ_GET_PARENT(cx, fun->object);
             if (!js_LookupProperty(cx, obj, (jsid)fun->atom, &pobj,
-                                   (JSProperty **)&sprop)) {
+                                   &prop)) {
                 return JS_FALSE;
             }
-            JS_ASSERT(sprop && pobj == obj);
-            slot = sprop->shortid;
-            OBJ_DROP_PROPERTY(cx, pobj, (JSProperty *)sprop);
+            JS_ASSERT(prop && pobj == obj);
+            slot = ((JSScopeProperty *) prop)->shortid;
+            OBJ_DROP_PROPERTY(cx, pobj, prop);
 
             /* Emit [JSOP_DEFLOCALFUN, local variable slot, atomIndex]. */
             off = js_EmitN(cx, cg, JSOP_DEFLOCALFUN, VARNO_LEN+ATOM_INDEX_LEN);
@@ -2815,15 +2981,29 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
             stmtInfo.type = STMT_FOR_IN_LOOP;
             noteIndex = -1;
 
-            /* If the left part is var x = i, bind x, evaluate i, and pop. */
+            /*
+             * If the left part is 'var x', emit code to define x if necessary
+             * using a prolog opcode, but do not emit a pop.  If the left part
+             * is 'var x = i', emit prolog code to define x if necessary; then
+             * emit code to evaluate i, assign the result to x, and pop the
+             * result off the stack.
+             *
+             * All the logic to do this is implemented in the outer switch's
+             * TOK_VAR case, conditioned on pn_extra flags set by the parser.
+             *
+             * In the 'for (var x = i in o) ...' case, the js_EmitTree(...pn3)
+             * called here will generate the SRC_VAR note for the assignment
+             * op that sets x = i, hoisting the initialized var declaration
+             * out of the loop: 'var x = i; for (x in o) ...'.
+             *
+             * In the 'for (var x in o) ...' case, nothing but the prolog op
+             * (if needed) should be generated here, we must emit the SRC_VAR
+             * just before the JSOP_FOR* opcode in the switch on pn3->pn_type
+             * a bit below, so nothing is hoisted: 'for (var x in o) ...'.
+             */
             pn3 = pn2->pn_left;
-            if (pn3->pn_type == TOK_VAR && pn3->pn_head->pn_expr) {
-                if (!js_EmitTree(cx, cg, pn3))
-                    return JS_FALSE;
-                /* Set pn3 to the variable name, to avoid another var note. */
-                pn3 = pn3->pn_head;
-                JS_ASSERT(pn3->pn_type == TOK_NAME);
-            }
+            if (pn3->pn_type == TOK_VAR && !js_EmitTree(cx, cg, pn3))
+                return JS_FALSE;
 
             /* Emit a push to allocate the iterator. */
             if (js_Emit1(cx, cg, JSOP_PUSH) < 0)
@@ -2842,14 +3022,28 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
             switch (pn3->pn_type) {
               case TOK_VAR:
                 pn3 = pn3->pn_head;
-                if (js_NewSrcNote(cx, cg, SRC_VAR) < 0)
+                JS_ASSERT(pn3->pn_type == TOK_NAME);
+                if (!pn3->pn_expr && js_NewSrcNote(cx, cg, SRC_VAR) < 0)
                     return JS_FALSE;
                 /* FALL THROUGH */
               case TOK_NAME:
-                pn3->pn_op = JSOP_FORNAME;
-                if (!LookupArgOrVar(cx, &cg->treeContext, pn3))
-                    return JS_FALSE;
-                op = pn3->pn_op;
+                if (pn3->pn_slot >= 0) {
+                    op = pn3->pn_op;
+                    switch (op) {
+                      case JSOP_GETARG:  /* FALL THROUGH */
+                      case JSOP_SETARG:  op = JSOP_FORARG; break;
+                      case JSOP_GETVAR:  /* FALL THROUGH */
+                      case JSOP_SETVAR:  op = JSOP_FORVAR; break;
+                      case JSOP_GETGVAR:
+                      case JSOP_SETGVAR: op = JSOP_FORNAME; break;
+                      default:           JS_ASSERT(0);
+                    }
+                } else {
+                    pn3->pn_op = JSOP_FORNAME;
+                    if (!LookupArgOrVar(cx, &cg->treeContext, pn3))
+                        return JS_FALSE;
+                    op = pn3->pn_op;
+                }
                 if (pn3->pn_slot >= 0) {
                     if (pn3->pn_attrs & JSPROP_READONLY)
                         op = JSOP_GETVAR;
@@ -3254,8 +3448,9 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
                  * This counts as a non-local jump, so do the finally thing.
                  */
 
-                /* popscope */
-                if (js_NewSrcNote(cx, cg, SRC_HIDDEN) < 0 ||
+                /* leavewith, annotated so the decompiler knows to pop  */
+                off = cg->stackDepth - 1;
+                if (js_NewSrcNote2(cx, cg, SRC_CATCH, off) < 0 ||
                     js_Emit1(cx, cg, JSOP_LEAVEWITH) < 0) {
                     return JS_FALSE;
                 }
@@ -3400,17 +3595,19 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
                     if (!ale)
                         return JS_FALSE;
                     atomIndex = ALE_INDEX(ale);
-
-                    if (!(cg->treeContext.flags & TCF_IN_FUNCTION) ||
-                        (cg->treeContext.flags & TCF_FUN_HEAVYWEIGHT)) {
-                        /* Emit a prolog bytecode to predefine the variable. */
-                        CG_SWITCH_TO_PROLOG(cg);
-                        if (!UpdateLineNumberNotes(cx, cg, pn2))
-                            return JS_FALSE;
-                        EMIT_ATOM_INDEX_OP(pn->pn_op, atomIndex);
-                        CG_SWITCH_TO_MAIN(cg);
-                    }
                 }
+
+                if ((js_CodeSpec[op].format & JOF_TYPEMASK) == JOF_CONST &&
+                    (!(cg->treeContext.flags & TCF_IN_FUNCTION) ||
+                     (cg->treeContext.flags & TCF_FUN_HEAVYWEIGHT))) {
+                    /* Emit a prolog bytecode to predefine the variable. */
+                    CG_SWITCH_TO_PROLOG(cg);
+                    if (!UpdateLineNumberNotes(cx, cg, pn2))
+                        return JS_FALSE;
+                    EMIT_ATOM_INDEX_OP(pn->pn_op, atomIndex);
+                    CG_SWITCH_TO_MAIN(cg);
+                }
+
                 if (pn2->pn_expr) {
                     if (op == JSOP_SETNAME)
                         EMIT_ATOM_INDEX_OP(JSOP_BINDNAME, atomIndex);
@@ -3424,6 +3621,23 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
                         return JS_FALSE;
                 }
             }
+
+            /*
+             * 'for (var x in o) ...' and 'for (var x = i in o) ...' call the
+             * TOK_VAR case, but only the initialized case (a strange one that
+             * falls out of ECMA-262's grammar) wants to run past this point.
+             * Both cases must conditionally emit a JSOP_DEFVAR, above.  Note
+             * that the parser error-checks to ensure that pn->pn_count is 1.
+             *
+             * XXX Narcissus keeps track of variable declarations in the node
+             * for the script being compiled, so there's no need to share any
+             * conditional prolog code generation there.  We could do likewise,
+             * but it's a big change, requiring extra allocation, so probably
+             * not worth the trouble for SpiderMonkey.
+             */
+            if ((pn->pn_extra & PNX_FORINVAR) && !pn2->pn_expr)
+                break;
+
             if (pn2 == pn->pn_head &&
                 js_NewSrcNote(cx, cg,
                               (pn->pn_op == JSOP_DEFCONST)
@@ -3451,7 +3665,7 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
                 return JS_FALSE;
             }
         }
-        if (pn->pn_extra) {
+        if (pn->pn_extra & PNX_POPVAR) {
             if (js_Emit1(cx, cg, JSOP_POP) < 0)
                 return JS_FALSE;
         }
@@ -3502,7 +3716,7 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
              * that it appears useless to the compiler.
              */
             useful = wantval = !cx->fp->fun ||
-                               cx->fp->fun->native ||
+                               !cx->fp->fun->interpreted ||
                                (cx->fp->flags & JSFRAME_SPECIAL);
             if (!useful) {
                 if (!CheckSideEffects(cx, &cg->treeContext, pn2, &useful))
@@ -3645,7 +3859,9 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
             switch (pn2->pn_type) {
               case TOK_NAME:
                 if (pn2->pn_op != JSOP_SETNAME) {
-                    EMIT_ATOM_INDEX_OP((pn2->pn_op == JSOP_SETARG)
+                    EMIT_ATOM_INDEX_OP((pn2->pn_op == JSOP_SETGVAR)
+                                       ? JSOP_GETGVAR
+                                       : (pn2->pn_op == JSOP_SETARG)
                                        ? JSOP_GETARG
                                        : JSOP_GETVAR,
                                        atomIndex);
@@ -3853,8 +4069,12 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
                 return JS_FALSE;
             op = pn2->pn_op;
             if (pn2->pn_slot >= 0) {
-                if (pn2->pn_attrs & JSPROP_READONLY)
-                    op = JSOP_GETVAR;
+                if (pn2->pn_attrs & JSPROP_READONLY) {
+                    /* Incrementing a declared const: just get its value. */
+                    op = ((js_CodeSpec[op].format & JOF_TYPEMASK) == JOF_CONST)
+                         ? JSOP_GETGVAR
+                         : JSOP_GETVAR;
+                }
                 atomIndex = (jsatomid) pn2->pn_slot;
                 EMIT_ATOM_INDEX_OP(op, atomIndex);
             } else {
@@ -4029,7 +4249,7 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
             atomIndex++;
         }
 
-        if (pn->pn_extra) {
+        if (pn->pn_extra & PNX_ENDCOMMA) {
             /* Emit a source note so we know to decompile an extra comma. */
             if (js_NewSrcNote(cx, cg, SRC_CONTINUE) < 0)
                 return JS_FALSE;
@@ -4097,7 +4317,7 @@ js_EmitTree(JSContext *cx, JSCodeGenerator *cg, JSParseNode *pn)
 #endif
             /* Annotate JSOP_INITELEM so we decompile 2:c and not just c. */
             if (pn3->pn_type == TOK_NUMBER) {
-                if (js_NewSrcNote(cx, cg, SRC_LABEL) < 0)
+                if (js_NewSrcNote2(cx, cg, SRC_LABEL, 0) < 0)
                     return JS_FALSE;
                 if (js_Emit1(cx, cg, JSOP_INITELEM) < 0)
                     return JS_FALSE;

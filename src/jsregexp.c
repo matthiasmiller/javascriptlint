@@ -175,11 +175,11 @@ typedef struct CompilerState {
     const jschar    *cpbegin;
     const jschar    *cpend;
     const jschar    *cp;
-    uintN           flags;
+    uint16          flags;
     uint16          parenCount;
     uint16          classCount;   /* number of [] encountered */
+    uint16          treeDepth;    /* maximum depth of parse tree */
     size_t          progLength;   /* estimated bytecode length */
-    uintN           treeDepth;    /* maximum depth of parse tree */
     RENode          *result;
     struct {
         const jschar *start;        /* small cache of class strings */
@@ -1621,7 +1621,7 @@ js_NewRegExp(JSContext *cx, JSTokenStream *ts,
     CompilerState state;
     size_t resize;
     jsbytecode *endPC;
-    uint32 i;
+    uintN i;
     size_t len;
 
     re = NULL;
@@ -1656,27 +1656,31 @@ js_NewRegExp(JSContext *cx, JSTokenStream *ts,
     if (!re)
         goto out;
 
+    re->nrefs = 1;
     re->classCount = state.classCount;
-    if (state.classCount) {
-        re->classList = (RECharSet *)JS_malloc(cx,
-                                               sizeof(RECharSet) *
-                                               state.classCount);
-        if (!re->classList)
+    if (re->classCount) {
+        re->classList = (RECharSet *)
+            JS_malloc(cx, re->classCount * sizeof(RECharSet));
+        if (!re->classList) {
+            js_DestroyRegExp(cx, re);
+            re = NULL;
             goto out;
-    }
-    else
+        }
+    } else {
         re->classList = NULL;
+    }
     endPC = EmitREBytecode(&state, re, state.treeDepth, re->program, state.result);
     if (!endPC) {
+        js_DestroyRegExp(cx, re);
         re = NULL;
         goto out;
     }
     *endPC++ = REOP_END;
     JS_ASSERT(endPC <= (re->program + (state.progLength + 1)));
 
-    re->nrefs = 1;
-    re->parenCount = state.parenCount;
     re->flags = flags;
+    re->cloneIndex = 0;
+    re->parenCount = state.parenCount;
     re->source = str;
 
 out:
@@ -2104,9 +2108,9 @@ ProcessCharSet(REGlobalData *gData, RECharSet *charSet)
 void
 js_DestroyRegExp(JSContext *cx, JSRegExp *re)
 {
-    uintN i;
     if (JS_ATOMIC_DECREMENT(&re->nrefs) == 0) {
         if (re->classList) {
+            uintN i;
             for (i = 0; i < re->classCount; i++) {
                 if (re->classList[i].converted)
                     JS_free(cx, re->classList[i].u.bits);
@@ -2520,7 +2524,8 @@ ExecuteREBytecode(REGlobalData *gData, REMatchState *x)
                 pc += ARG_LEN;
                 op = (REOp) *pc++;
                 if (REOP_IS_SIMPLE(op) /* Note - fail to fail! */ &&
-                    SimpleMatch(gData, x, op, &pc, JS_FALSE)) {
+                    SimpleMatch(gData, x, op, &pc, JS_FALSE) &&
+                    pc == nextpc) {
                     result = NULL;
                     break;
                 }
@@ -3378,31 +3383,34 @@ regexp_xdrObject(JSXDRState *xdr, JSObject **objp)
 {
     JSRegExp *re;
     JSString *source;
-    uint8 flags;
+    uint32 flagsword;
+    JSObject *obj;
 
     if (xdr->mode == JSXDR_ENCODE) {
         re = (JSRegExp *) JS_GetPrivate(xdr->cx, *objp);
         if (!re)
             return JS_FALSE;
         source = re->source;
-        flags = (uint8) re->flags;
+        flagsword = ((uint32)re->cloneIndex << 16) | re->flags;
     }
     if (!JS_XDRString(xdr, &source) ||
-        !JS_XDRUint8(xdr, &flags)) {
+        !JS_XDRUint32(xdr, &flagsword)) {
         return JS_FALSE;
     }
     if (xdr->mode == JSXDR_DECODE) {
-        *objp = js_NewObject(xdr->cx, &js_RegExpClass, NULL, NULL);
-        if (!*objp)
+        obj = js_NewObject(xdr->cx, &js_RegExpClass, NULL, NULL);
+        if (!obj)
             return JS_FALSE;
-        re = js_NewRegExp(xdr->cx, NULL, source, flags, JS_FALSE);
+        re = js_NewRegExp(xdr->cx, NULL, source, (uint16)flagsword, JS_FALSE);
         if (!re)
             return JS_FALSE;
-        if (!JS_SetPrivate(xdr->cx, *objp, re) ||
-                !js_SetLastIndex(xdr->cx, *objp, 0)) {
+        if (!JS_SetPrivate(xdr->cx, obj, re) ||
+            !js_SetLastIndex(xdr->cx, obj, 0)) {
             js_DestroyRegExp(xdr->cx, re);
             return JS_FALSE;
         }
+        re->cloneIndex = (uint16)(flagsword >> 16);
+        *objp = obj;
     }
     return JS_TRUE;
 }
@@ -3433,9 +3441,9 @@ JSClass js_RegExpClass = {
 
 static const jschar empty_regexp_ucstr[] = {'(', '?', ':', ')', 0};
 
-static JSBool
-regexp_toString(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
-                jsval *rval)
+JSBool
+js_regexp_toString(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
+                   jsval *rval)
 {
     JSRegExp *re;
     const jschar *source;
@@ -3499,8 +3507,11 @@ regexp_compile(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
 {
     JSString *opt, *str;
     JSRegExp *oldre, *re;
-    JSBool ok;
+    JSBool ok, ok2;
     JSObject *obj2;
+    size_t length, nbytes;
+    const jschar *cp, *start, *end;
+    jschar *nstart, *ncp, *tmp;
 
     if (!JS_InstanceOf(cx, obj, &js_RegExpClass, argv))
         return JS_FALSE;
@@ -3548,23 +3559,66 @@ regexp_compile(JSContext *cx, JSObject *obj, uintN argc, jsval *argv,
                 argv[1] = STRING_TO_JSVAL(opt);
             }
         }
+
+        /* Escape any naked slashes in the regexp source. */
+        length = JSSTRING_LENGTH(str);
+        start = JSSTRING_CHARS(str);
+        end = start + length;
+        nstart = ncp = NULL;
+        for (cp = start; cp < end; cp++) {
+            if (*cp == '/' && (cp == start || cp[-1] != '\\')) {
+                nbytes = (++length + 1) * sizeof(jschar);
+                if (!nstart) {
+                    nstart = (jschar *) JS_malloc(cx, nbytes);
+                    if (!nstart)
+                        return JS_FALSE;
+                    ncp = nstart + (cp - start);
+                    js_strncpy(nstart, start, cp - start);
+                } else {
+                    tmp = (jschar *) JS_realloc(cx, nstart, nbytes);
+                    if (!tmp) {
+                        JS_free(cx, nstart);
+                        return JS_FALSE;
+                    }
+                    ncp = tmp + (ncp - nstart);
+                    nstart = tmp;
+                }
+                *ncp++ = '\\';
+            }
+            if (nstart)
+                *ncp++ = *cp;
+        }
+
+        if (nstart) {
+            /* Don't forget to store the backstop after the new string. */
+            JS_ASSERT((size_t)(ncp - nstart) == length);
+            *ncp = 0;
+            str = js_NewString(cx, nstart, length, 0);
+            if (!str) {
+                JS_free(cx, nstart);
+                return JS_FALSE;
+            }
+            argv[0] = STRING_TO_JSVAL(str);
+        }
     }
+
     re = js_NewRegExpOpt(cx, NULL, str, opt, JS_FALSE);
 created:
     if (!re)
         return JS_FALSE;
     JS_LOCK_OBJ(cx, obj);
     oldre = (JSRegExp *) JS_GetPrivate(cx, obj);
-    ok = JS_SetPrivate(cx, obj, re) && js_SetLastIndex(cx, obj, 0);
+    ok = JS_SetPrivate(cx, obj, re);
+    ok2 = js_SetLastIndex(cx, obj, 0);
     JS_UNLOCK_OBJ(cx, obj);
     if (!ok) {
         js_DestroyRegExp(cx, re);
-    } else {
-        if (oldre)
-            js_DestroyRegExp(cx, oldre);
-        *rval = OBJECT_TO_JSVAL(obj);
+        return JS_FALSE;
     }
-    return ok;
+    if (oldre)
+        js_DestroyRegExp(cx, oldre);
+    *rval = OBJECT_TO_JSVAL(obj);
+    return ok2;
 }
 
 static JSBool
@@ -3651,9 +3705,9 @@ regexp_test(JSContext *cx, JSObject *obj, uintN argc, jsval *argv, jsval *rval)
 
 static JSFunctionSpec regexp_methods[] = {
 #if JS_HAS_TOSOURCE
-    {js_toSource_str,   regexp_toString,        0,0,0},
+    {js_toSource_str,   js_regexp_toString,     0,0,0},
 #endif
-    {js_toString_str,   regexp_toString,        0,0,0},
+    {js_toString_str,   js_regexp_toString,     0,0,0},
     {"compile",         regexp_compile,         1,0,0},
     {"exec",            regexp_exec,            0,0,0},
     {"test",            regexp_test,            0,0,0},

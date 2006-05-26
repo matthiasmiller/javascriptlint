@@ -286,6 +286,7 @@ NewBinary(JSContext *cx, JSTokenType tt,
         left->pn_type == TOK_NUMBER &&
         right->pn_type == TOK_NUMBER) {
         left->pn_dval += right->pn_dval;
+        left->pn_pos.end = right->pn_pos.end;
         RecycleTree(right, tc);
         return left;
     }
@@ -812,6 +813,7 @@ FunctionBody(JSContext *cx, JSTokenStream *ts, JSFunction *fun,
         frame.fun = fun;
         frame.varobj = frame.scopeChain = funobj;
         frame.down = fp;
+        frame.flags = (fp->flags & JSFRAME_COMPILE_N_GO);
         cx->fp = &frame;
     }
 
@@ -881,10 +883,11 @@ js_CompileFunctionBody(JSContext *cx, JSTokenStream *ts, JSFunction *fun)
          * No need to emit code here -- Statements (via FunctionBody) already
          * has.  See similar comment in js_CompileTokenStream, and bug 108257.
          */
-        fun->script = js_NewScriptFromCG(cx, &funcg, fun);
-        if (!fun->script) {
+        fun->u.script = js_NewScriptFromCG(cx, &funcg, fun);
+        if (!fun->u.script) {
             ok = JS_FALSE;
         } else {
+            fun->interpreted = JS_TRUE;
             if (funcg.treeContext.flags & TCF_FUN_HEAVYWEIGHT)
                 fun->flags |= JSFUN_HEAVYWEIGHT;
             ok = JS_TRUE;
@@ -904,39 +907,124 @@ static JSParseNode *
 FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
             JSBool lambda)
 {
-    JSParseNode *pn, *body;
     JSOp op, prevop;
+    JSParseNode *pn, *body;
     JSAtom *funAtom, *argAtom;
-    JSFunction *fun;
-    JSObject *parent;
-    JSObject *pobj;
+    JSStackFrame *fp;
+    JSObject *varobj, *pobj;
+    JSAtomListElement *ale;
     JSProperty *prop;
+    JSFunction *fun;
     uintN dupflag;
     JSBool ok;
     JSTreeContext funtc;
-    JSAtomListElement *ale;
 
     /* Make a TOK_FUNCTION node. */
-    pn = NewParseNode(cx, &CURRENT_TOKEN(ts), PN_FUNC, tc);
-    if (!pn)
-        return NULL;
 #if JS_HAS_GETTER_SETTER
     op = CURRENT_TOKEN(ts).t_op;
 #endif
+    pn = NewParseNode(cx, &CURRENT_TOKEN(ts), PN_FUNC, tc);
+    if (!pn)
+        return NULL;
 
     /* Scan the optional function name into funAtom. */
-    if (js_MatchToken(cx, ts, TOK_NAME))
-        funAtom = CURRENT_TOKEN(ts).t_atom;
-    else
-        funAtom = NULL;
+    funAtom = js_MatchToken(cx, ts, TOK_NAME) ? CURRENT_TOKEN(ts).t_atom : NULL;
 
     /* Find the nearest variable-declaring scope and use it as our parent. */
-    parent = cx->fp->varobj;
-    fun = js_NewFunction(cx, NULL, NULL, 0, lambda ? JSFUN_LAMBDA : 0, parent,
+    fp = cx->fp;
+    varobj = fp->varobj;
+
+    /*
+     * Record names for function statements in tc->decls so we know when to
+     * avoid optimizing variable references that might name a function.
+     */
+    if (!lambda && funAtom) {
+        ATOM_LIST_SEARCH(ale, &tc->decls, funAtom);
+        if (ale) {
+            prevop = ALE_JSOP(ale);
+            if (JS_HAS_STRICT_OPTION(cx) || prevop == JSOP_DEFCONST) {
+                const char *name = js_AtomToPrintableString(cx, funAtom);
+                if (!name ||
+                    !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 (prevop != JSOP_DEFCONST)
+                                                 ? JSREPORT_WARNING |
+                                                   JSREPORT_STRICT
+                                                 : JSREPORT_ERROR,
+                                                 JSMSG_REDECLARED_VAR,
+                                                 (prevop == JSOP_DEFFUN ||
+                                                  prevop == JSOP_CLOSURE)
+                                                 ? js_function_str
+                                                 : (prevop == JSOP_DEFCONST)
+                                                 ? js_const_str
+                                                 : js_var_str,
+                                                 name)) {
+                    return NULL;
+                }
+            }
+            if (tc->topStmt && prevop == JSOP_DEFVAR)
+                tc->flags |= TCF_FUN_CLOSURE_VS_VAR;
+        } else {
+            /* save global identifier for lint */
+            if (cx->lint && cx->lint->scriptIdentifiers && !tc->down) {
+                jsval val;
+                int flags;
+ 
+                flags = 0;
+                val = INT_TO_JSVAL(flags);
+ 
+                if (!js_SetProperty(cx, cx->lint->scriptIdentifiers, (jsid)funAtom, &val))
+                    return NULL;
+            }
+            ale = js_IndexAtom(cx, funAtom, &tc->decls);
+            if (!ale)
+                return NULL;
+        }
+        ALE_SET_JSOP(ale, tc->topStmt ? JSOP_CLOSURE : JSOP_DEFFUN);
+
+#if JS_HAS_LEXICAL_CLOSURE
+        /*
+         * A function nested at top level inside another's body needs only a
+         * local variable to bind its name to its value, and not an activation
+         * object property (it might also need the activation property, if the
+         * outer function contains with statements, e.g., but the stack slot
+         * wins when jsemit.c's LookupArgOrVar can optimize a JSOP_NAME into a
+         * JSOP_GETVAR bytecode).
+         */
+        if (!tc->topStmt && (tc->flags & TCF_IN_FUNCTION)) {
+            /*
+             * Define a property on the outer function so that LookupArgOrVar
+             * can properly optimize accesses.
+             *
+             * XXX Here and in Variables, we use the function object's scope,
+             * XXX arguably polluting it, when we could use a compiler-private
+             * XXX scope structure.  Tradition!
+             */
+            JS_ASSERT(OBJ_GET_CLASS(cx, varobj) == &js_FunctionClass);
+            JS_ASSERT(fp->fun == (JSFunction *) JS_GetPrivate(cx, varobj));
+            if (!js_LookupProperty(cx, varobj, (jsid)funAtom, &pobj, &prop))
+                return NULL;
+            if (prop)
+                OBJ_DROP_PROPERTY(cx, pobj, prop);
+            if (!prop || pobj != varobj) {
+                if (!js_DefineNativeProperty(cx, varobj, (jsid)funAtom,
+                                             JSVAL_VOID,
+                                             js_GetLocalVariable,
+                                             js_SetLocalVariable,
+                                             JSPROP_ENUMERATE | JSPROP_SHARED,
+                                             SPROP_HAS_SHORTID, fp->fun->nvars,
+                                             NULL)) {
+                    return NULL;
+                }
+                fp->fun->nvars++;
+            }
+        }
+#endif
+    }
+
+    fun = js_NewFunction(cx, NULL, NULL, 0, lambda ? JSFUN_LAMBDA : 0, varobj,
                          funAtom);
     if (!fun)
         return NULL;
-
 #if JS_HAS_GETTER_SETTER
     if (op != JSOP_NOP)
         fun->flags |= (op == JSOP_GETTER) ? JSPROP_GETTER : JSPROP_SETTER;
@@ -1032,100 +1120,6 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
     }
 #endif
 
-    /*
-     * Record names for function statements in tc->decls so we know when to
-     * avoid optimizing variable references that might name a function.
-     */
-    if (!lambda && funAtom) {
-        ATOM_LIST_SEARCH(ale, &tc->decls, funAtom);
-        if (ale) {
-            prevop = ALE_JSOP(ale);
-            if (JS_HAS_STRICT_OPTION(cx) || prevop == JSOP_DEFCONST) {
-                const char *name = js_AtomToPrintableString(cx, funAtom);
-                if (!name ||
-                    !js_ReportCompileErrorNumber(cx, ts, NULL,
-                                                 (prevop != JSOP_DEFCONST)
-                                                 ? JSREPORT_WARNING |
-                                                   JSREPORT_STRICT
-                                                 : JSREPORT_ERROR,
-                                                 JSMSG_REDECLARED_VAR,
-                                                 (prevop == JSOP_DEFFUN ||
-                                                  prevop == JSOP_CLOSURE)
-                                                 ? js_function_str
-                                                 : (prevop == JSOP_DEFCONST)
-                                                 ? js_const_str
-                                                 : js_var_str,
-                                                 name)) {
-                    return NULL;
-                }
-            }
-            if (tc->topStmt && prevop == JSOP_DEFVAR)
-                tc->flags |= TCF_FUN_CLOSURE_VS_VAR;
-        } else {
-            /* save global identifier for lint */
-            if (cx->lint && cx->lint->scriptIdentifiers && !tc->down) {
-                jsval val;
-                int flags;
-
-                flags = 0;
-                if ((funtc.flags & TCF_RETURN_EXPR) == 0)
-                    flags |= JSL_IDENTIFIER_FUNC_NO_RETURN;
-                val = INT_TO_JSVAL(flags);
-
-                if (!js_SetProperty(cx, cx->lint->scriptIdentifiers, (jsid)funAtom, &val))
-                    return NULL;
-            }
-            ale = js_IndexAtom(cx, funAtom, &tc->decls);
-            if (!ale)
-                return NULL;
-        }
-        ALE_SET_JSOP(ale, tc->topStmt ? JSOP_CLOSURE : JSOP_DEFFUN);
-
-#if JS_HAS_LEXICAL_CLOSURE
-        /*
-         * A function nested at top level inside another's body needs only a
-         * local variable to bind its name to its value, and not an activation
-         * object property (it might also need the activation property, if the
-         * outer function contains with statements, e.g., but the stack slot
-         * wins when jsemit.c's LookupArgOrVar can optimize a JSOP_NAME into a
-         * JSOP_GETVAR bytecode).
-         */
-        if (!tc->topStmt && (tc->flags & TCF_IN_FUNCTION)) {
-            JSStackFrame *fp;
-            JSObject *varobj;
-
-            /*
-             * Define a property on the outer function so that LookupArgOrVar
-             * can properly optimize accesses.
-             *
-             * XXX Here and in Variables, we use the function object's scope,
-             * XXX arguably polluting it, when we could use a compiler-private
-             * XXX scope structure.  Tradition!
-             */
-            fp = cx->fp;
-            varobj = fp->varobj;
-            JS_ASSERT(OBJ_GET_CLASS(cx, varobj) == &js_FunctionClass);
-            JS_ASSERT(fp->fun == (JSFunction *) JS_GetPrivate(cx, varobj));
-            if (!js_LookupProperty(cx, varobj, (jsid)funAtom, &pobj, &prop))
-                return NULL;
-            if (prop)
-                OBJ_DROP_PROPERTY(cx, pobj, prop);
-            if (!prop || pobj != varobj) {
-                if (!js_DefineNativeProperty(cx, varobj, (jsid)funAtom,
-                                             OBJECT_TO_JSVAL(fun->object),
-                                             js_GetLocalVariable,
-                                             js_SetLocalVariable,
-                                             JSPROP_ENUMERATE,
-                                             SPROP_HAS_SHORTID, fp->fun->nvars,
-                                             NULL)) {
-                    return NULL;
-                }
-                fp->fun->nvars++;
-            }
-        }
-#endif
-    }
-
 #if JS_HAS_LEXICAL_CLOSURE
     if (lambda || !funAtom) {
         /*
@@ -1147,9 +1141,11 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
         op = JSOP_NOP;
 
     /*
-     * Pending a better automatic GC root management scheme (see Mozilla bug
-     * 40757, http://bugzilla.mozilla.org/show_bug.cgi?id=40757), we need to
-     * atomize here to protect against a GC activation.
+     * Absent use of the new scoped local GC roots API around compiler calls,
+     * we need to atomize here to protect against a GC activation.  Atoms are
+     * protected from GC during compilation by the JS_FRIEND_API entry points
+     * in this file.  There doesn't seem to be any gain in switching from the
+     * atom-keeping method to the bulkier, slower scoped local roots method.
      */
     pn->pn_funAtom = js_AtomizeObject(cx, fun->object, 0);
     if (!pn->pn_funAtom)
@@ -1249,7 +1245,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         return NULL;
     PN_INIT_LIST(pn);
 
-    ts->flags |= TSF_REGEXP;
+    ts->flags |= TSF_OPERAND;
     hadtoken = JS_FALSE;
     beyondreach = JS_FALSE;
     alreadywarnedunreachable = JS_FALSE;
@@ -1266,7 +1262,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
         hadtoken = JS_TRUE;
         beyondreach = (beyondreach || tt == TOK_BREAK || tt == TOK_CONTINUE || tt == TOK_RETURN || tt == TOK_THROW);
-        ts->flags &= ~TSF_REGEXP;
+        ts->flags &= ~TSF_OPERAND;
         pn2 = Statement(cx, ts, tc);
         if (!pn2)
             return NULL;
@@ -1280,7 +1276,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             }
         }
 
-        ts->flags |= TSF_REGEXP;
+        ts->flags |= TSF_OPERAND;
 
         /*
          * If compiling top-level statements, emit as we go to save space,
@@ -1318,7 +1314,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             PN_APPEND(pn, pn2);
         }
     }
-    ts->flags &= ~TSF_REGEXP;
+    ts->flags &= ~TSF_OPERAND;
     if (tt == TOK_ERROR)
         return NULL;
 
@@ -1426,9 +1422,9 @@ ImportExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     pn->pn_slot = -1;
     pn->pn_attrs = 0;
 
-    ts->flags |= TSF_REGEXP;
+    ts->flags |= TSF_OPERAND;
     while ((tt = js_GetToken(cx, ts)) == TOK_DOT || tt == TOK_LB) {
-        ts->flags &= ~TSF_REGEXP;
+        ts->flags &= ~TSF_OPERAND;
         if (pn->pn_op == JSOP_IMPORTALL)
             goto bad_import;
 
@@ -1468,9 +1464,9 @@ ImportExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         }
 
         pn = pn2;
-        ts->flags |= TSF_REGEXP;
+        ts->flags |= TSF_OPERAND;
     }
-    ts->flags &= ~TSF_REGEXP;
+    ts->flags &= ~TSF_OPERAND;
     if (tt == TOK_ERROR)
         return NULL;
     js_UngetToken(ts);
@@ -1579,9 +1575,11 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     JSStmtInfo stmtInfo, *stmt, *stmt2;
     JSAtom *label;
 
-    ts->flags |= TSF_REGEXP;
+    CHECK_RECURSION();
+
+    ts->flags |= TSF_OPERAND;
     tt = js_GetToken(cx, ts);
-    ts->flags &= ~TSF_REGEXP;
+    ts->flags &= ~TSF_OPERAND;
 
     if (cx->lint && tt != TOK_LC && tc->topStmt &&
         !(tc->topStmt->type == STMT_ELSE && tt == TOK_IF)/* allow else if statements */) {
@@ -1936,9 +1934,9 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         js_PushStatement(tc, &stmtInfo, STMT_FOR_LOOP, -1);
 
         MUST_MATCH_TOKEN(TOK_LP, JSMSG_PAREN_AFTER_FOR);
-        ts->flags |= TSF_REGEXP;
+        ts->flags |= TSF_OPERAND;
         tt = js_PeekToken(cx, ts);
-        ts->flags &= ~TSF_REGEXP;
+        ts->flags &= ~TSF_OPERAND;
         if (tt == TOK_SEMI) {
             /* No initializer -- set first kid of left sub-node to null. */
             pn1 = NULL;
@@ -1990,9 +1988,13 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             }
 
             if (pn1->pn_type == TOK_VAR) {
-                /* Tell js_EmitTree(TOK_VAR) to generate a final POP. */
-                pn1->pn_extra = JS_TRUE;
+                /* Tell js_EmitTree(TOK_VAR) that pn1 is part of a for/in. */
+                pn1->pn_extra |= PNX_FORINVAR;
+
+                /* Generate a final POP only if the var has an initializer. */
                 pn2 = pn1->pn_head;
+                if (pn2->pn_expr)
+                    pn1->pn_extra |= PNX_POPVAR;
             } else {
                 pn2 = pn1;
             }
@@ -2011,9 +2013,9 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         } else {
             /* Parse the loop condition or null into pn2. */
             MUST_MATCH_TOKEN(TOK_SEMI, JSMSG_SEMI_AFTER_FOR_INIT);
-            ts->flags |= TSF_REGEXP;
+            ts->flags |= TSF_OPERAND;
             tt = js_PeekToken(cx, ts);
-            ts->flags &= ~TSF_REGEXP;
+            ts->flags &= ~TSF_OPERAND;
             if (tt == TOK_SEMI) {
                 pn2 = NULL;
             } else {
@@ -2024,9 +2026,9 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
             /* Parse the update expression or null into pn3. */
             MUST_MATCH_TOKEN(TOK_SEMI, JSMSG_SEMI_AFTER_FOR_COND);
-            ts->flags |= TSF_REGEXP;
+            ts->flags |= TSF_OPERAND;
             tt = js_PeekToken(cx, ts);
-            ts->flags &= ~TSF_REGEXP;
+            ts->flags &= ~TSF_OPERAND;
             if (tt == TOK_RP) {
                 pn3 = NULL;
             } else {
@@ -2181,6 +2183,19 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         pn = NewParseNode(cx, &CURRENT_TOKEN(ts), PN_UNARY, tc);
         if (!pn)
             return NULL;
+
+        /* ECMA-262 Edition 3 says 'throw [no LineTerminator here] Expr'. */
+        ts->flags |= TSF_OPERAND;
+        tt = js_PeekTokenSameLine(cx, ts);
+        ts->flags &= ~TSF_OPERAND;
+        if (tt == TOK_ERROR)
+            return NULL;
+        if (tt == TOK_EOF || tt == TOK_EOL || tt == TOK_SEMI || tt == TOK_RC) {
+            js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
+                                        JSMSG_SYNTAX_ERROR);
+            return NULL;
+        }
+
         pn2 = Expr(cx, ts, tc);
         if (!pn2)
             return NULL;
@@ -2280,6 +2295,13 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         break;
 
       case TOK_WITH:
+        if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING | JSREPORT_STRICT,
+                                         JSMSG_DEPRECATED_USAGE,
+                                         js_with_statement_str)) {
+            return NULL;
+        }
+
         pn = NewParseNode(cx, &CURRENT_TOKEN(ts), PN_BINARY, tc);
         if (!pn)
             return NULL;
@@ -2296,14 +2318,6 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             return NULL;
         js_PopStatement(tc);
 
-        /* Deprecate after parsing, in case of WERROR option. */
-        if (!js_ReportCompileErrorNumber(cx, ts, NULL,
-                                         JSREPORT_WARNING | JSREPORT_STRICT,
-                                         JSMSG_DEPRECATED_USAGE,
-                                         js_with_statement_str)) {
-            return NULL;
-        }
-
         pn->pn_pos.end = pn2->pn_pos.end;
         pn->pn_right = pn2;
         tc->flags |= TCF_FUN_HEAVYWEIGHT;
@@ -2315,7 +2329,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             return NULL;
 
         /* Tell js_EmitTree to generate a final POP. */
-        pn->pn_extra = JS_TRUE;
+        pn->pn_extra |= PNX_POPVAR;
         break;
 
       case TOK_RETURN:
@@ -2329,9 +2343,9 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             return NULL;
 
         /* This is ugly, but we don't want to require a semicolon. */
-        ts->flags |= TSF_REGEXP;
+        ts->flags |= TSF_OPERAND;
         tt = js_PeekTokenSameLine(cx, ts);
-        ts->flags &= ~TSF_REGEXP;
+        ts->flags &= ~TSF_OPERAND;
         if (tt == TOK_ERROR)
             return NULL;
 
@@ -2515,7 +2529,7 @@ Variables(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     if (!pn)
         return NULL;
     pn->pn_op = CURRENT_TOKEN(ts).t_op;
-    pn->pn_extra = JS_FALSE;            /* assume no JSOP_POP needed */
+    pn->pn_extra = 0;                   /* assume no JSOP_POP needed */
     PN_INIT_LIST(pn);
 
     /*
@@ -2610,8 +2624,12 @@ Variables(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         pn2->pn_attrs |= JSPROP_LINT_DECLARED;
         PN_APPEND(pn, pn2);
 
-        if (!OBJ_LOOKUP_PROPERTY(cx, obj, (jsid)atom, &pobj, &prop))
-            return NULL;
+        if (!fun) {
+            prop = NULL; /* don't lookup global variables at compile time */
+        } else {
+            if (!OBJ_LOOKUP_PROPERTY(cx, obj, (jsid)atom, &pobj, &prop))
+                return NULL;
+        }
         if (prop && pobj == obj && OBJ_IS_NATIVE(pobj)) {
             sprop = (JSScopeProperty *)prop;
             if (sprop->getter == js_GetArgument) {
@@ -3149,9 +3167,9 @@ UnaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     JSTokenType tt;
     JSParseNode *pn, *pn2;
 
-    ts->flags |= TSF_REGEXP;
+    ts->flags |= TSF_OPERAND;
     tt = js_GetToken(cx, ts);
-    ts->flags &= ~TSF_REGEXP;
+    ts->flags &= ~TSF_OPERAND;
 
     switch (tt) {
       case TOK_UNARYOP:
@@ -3252,9 +3270,9 @@ ArgumentList(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
 {
     JSBool matched;
 
-    ts->flags |= TSF_REGEXP;
+    ts->flags |= TSF_OPERAND;
     matched = js_MatchToken(cx, ts, TOK_RP);
-    ts->flags &= ~TSF_REGEXP;
+    ts->flags &= ~TSF_OPERAND;
     if (!matched) {
         do {
             JSParseNode *argNode = AssignExpr(cx, ts, tc);
@@ -3282,9 +3300,9 @@ MemberExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
     CHECK_RECURSION();
 
     /* Check for new expression first. */
-    ts->flags |= TSF_REGEXP;
+    ts->flags |= TSF_OPERAND;
     tt = js_PeekToken(cx, ts);
-    ts->flags &= ~TSF_REGEXP;
+    ts->flags &= ~TSF_OPERAND;
     if (tt == TOK_NEW) {
         (void) js_GetToken(cx, ts);
 
@@ -3370,7 +3388,7 @@ MemberExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
                                      JSMSG_TOO_MANY_FUN_ARGS);
                 return NULL;
             }
-            pn2->pn_pos.end = PN_LAST(pn2)->pn_pos.end;
+            pn2->pn_pos.end = CURRENT_TOKEN(ts).pos.end;
         } else {
             js_UngetToken(ts);
             return pn;
@@ -3482,16 +3500,16 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
   again:
     /*
      * Control flows here after #n= is scanned.  If the following primary is
-     * not valid after such a "sharp variable" definition, the token type case
+     * not valid after such a "sharp variable" definition, the tt switch case
      * should set notsharp.
      */
 #endif
 
     CHECK_RECURSION();
 
-    ts->flags |= TSF_REGEXP;
+    ts->flags |= TSF_OPERAND;
     tt = js_GetToken(cx, ts);
-    ts->flags &= ~TSF_REGEXP;
+    ts->flags &= ~TSF_OPERAND;
 
 #if JS_HAS_GETTER_SETTER
     if (tt == TOK_NAME) {
@@ -3520,7 +3538,7 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         if (!pn)
             return NULL;
         pn->pn_type = TOK_RB;
-        pn->pn_extra = JS_FALSE;
+        pn->pn_extra = 0;
 
 #if JS_HAS_SHARP_VARS
         if (defsharp) {
@@ -3530,16 +3548,16 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 #endif
             PN_INIT_LIST(pn);
 
-        ts->flags |= TSF_REGEXP;
+        ts->flags |= TSF_OPERAND;
         matched = js_MatchToken(cx, ts, TOK_RB);
-        ts->flags &= ~TSF_REGEXP;
+        ts->flags &= ~TSF_OPERAND;
         if (!matched) {
             for (atomIndex = 0; atomIndex < ATOM_INDEX_LIMIT; atomIndex++) {
-                ts->flags |= TSF_REGEXP;
+                ts->flags |= TSF_OPERAND;
                 tt = js_PeekToken(cx, ts);
-                ts->flags &= ~TSF_REGEXP;
+                ts->flags &= ~TSF_OPERAND;
                 if (tt == TOK_RB) {
-                    pn->pn_extra = JS_TRUE;
+                    pn->pn_extra |= PNX_ENDCOMMA;
                     break;
                 }
 
@@ -3744,6 +3762,26 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             if (pn->pn_atom == cx->runtime->atomState.parentAtom ||
                 pn->pn_atom == cx->runtime->atomState.protoAtom) {
                 tc->flags |= TCF_FUN_HEAVYWEIGHT;
+            } else {
+                JSAtomListElement *ale;
+                JSStackFrame *fp;
+                JSStmtInfo *stmt;
+
+                /* Measure optimizable global variable uses. */
+                ATOM_LIST_SEARCH(ale, &tc->decls, pn->pn_atom);
+                if (ale &&
+                    !(fp = cx->fp)->fun &&
+                    fp->scopeChain == fp->varobj &&
+                    !js_InWithStatement(tc) &&
+                    !js_InCatchBlock(tc, pn->pn_atom)) {
+                    tc->globalUses++;
+                    for (stmt = tc->topStmt; stmt; stmt = stmt->down) {
+                        if (STMT_IS_LOOP(stmt)) {
+                            tc->loopyGlobalUses++;
+                            break;
+                        }
+                    }
+                }
             }
 
             if (cx->lint && !MarkIfDefined(cx, ts, tc, pn))
