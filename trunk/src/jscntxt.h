@@ -353,6 +353,7 @@ typedef struct JSLint {
     JSBool              hasCompletedPartialScript;
 
     /* control comments */
+    JSBool              controlCommentsIgnoreAll;
     JSBool              controlCommentsIgnore;
     JSBool              controlCommentsOptionExplicit;
     JSBool              controlCommentsAllowFallthru;
@@ -361,7 +362,8 @@ typedef struct JSLint {
     struct JSLint       *down;
 } JSLint;
 
-#define SHOULD_IGNORE_LINT_WARNINGS(cx) (!(cx)->lint || (cx)->lint->controlCommentsIgnore)
+#define SHOULD_IGNORE_LINT_WARNINGS(cx) (!(cx)->lint || (cx)->lint->controlCommentsIgnoreAll || \
+                                         (cx)->lint->controlCommentsIgnore)
 
 struct JSContext {
     JSCList             links;

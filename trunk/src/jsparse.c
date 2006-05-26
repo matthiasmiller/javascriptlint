@@ -459,7 +459,7 @@ MarkIfDeclared(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode 
     scope = cx->fp->scopeChain;
 
     /* nasty, but undeclared identifiers aren't warned against until end */
-    if (cx->lint->controlCommentsIgnore) {
+    if (SHOULD_IGNORE_LINT_WARNINGS(cx)) {
         pn->pn_attrs |= JSPROP_LINT_IGNORE;
         return JS_TRUE;
     }
@@ -590,7 +590,7 @@ MarkDeclaredIdentifiers(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSP
         return JS_TRUE;
 
     if (pn->pn_type == TOK_NAME) {
-        if (cx->lint->controlCommentsIgnore) {
+        if (SHOULD_IGNORE_LINT_WARNINGS(cx)) {
             /* nasty, but undeclared identifiers aren't warned against until end */
             pn->pn_attrs |= JSPROP_LINT_IGNORE;
         }
@@ -1404,7 +1404,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         return NULL;
 
     /* empty catch is useful */
-    if (cx->lint && !hadtoken && (!tc->topStmt || tc->topStmt->type != STMT_CATCH)) {
+    if (cx->lint && !hadtoken && tc->topStmt && tc->topStmt->type != STMT_CATCH) {
         if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING | JSREPORT_STRICT,
                                          JSMSG_EMPTY_STATEMENT)) {

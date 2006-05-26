@@ -800,6 +800,7 @@ typedef struct JSLControlComment
 {
     JSBool isAtFormat;
     JSBool endedWithAt;
+    const char *controlCommentIgnoreAll;
     const char *controlCommentIgnore;
     const char *controlCommentEnd;
     const char *controlCommentOptionExplicit;
@@ -878,6 +879,7 @@ js_StartControlComment(JSTokenStream *ts, JSLint *lint, JSLControlComment *jslCC
         return JS_FALSE;
 
     jslCC->endedWithAt = JS_FALSE;
+    jslCC->controlCommentIgnoreAll = "ignoreall";
     jslCC->controlCommentIgnore = "ignore";
     jslCC->controlCommentEnd = "end";
     jslCC->controlCommentOptionExplicit = "option explicit";
@@ -892,6 +894,7 @@ void
 js_ReadControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *jslCC, int32 c)
 {
     /* try to advance control comment */
+    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentIgnoreAll, c);
     js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentIgnore, c);
     js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentEnd, c);
     js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentOptionExplicit, c);
@@ -918,7 +921,10 @@ js_ProcessControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *js
     uintN defaultErrNumber;
     defaultErrNumber = jslCC->isAtFormat ? JSMSG_LEGACY_CC_NOT_UNDERSTOOD : JSMSG_JSL_CC_NOT_UNDERSTOOD;
 
-    if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentIgnore)) {
+    if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentIgnoreAll)) {
+        cx->lint->controlCommentsIgnoreAll = JS_TRUE;
+    }
+    else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentIgnore)) {
         /* check nesting */
         if (cx->lint->controlCommentsIgnore &&
             !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
