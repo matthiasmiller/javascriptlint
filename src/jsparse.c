@@ -541,7 +541,6 @@ js_CompileTokenStream(JSContext *cx, JSObject *chain, JSTokenStream *ts,
     uint32 flags;
     JSParseNode *pn;
     JSBool ok;
-
 #ifdef METER_PARSENODES
     void *sbrk(ptrdiff_t), *before = sbrk(0);
 #endif
@@ -2755,7 +2754,7 @@ EqExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         op = CURRENT_TOKEN(ts).t_op;
         pn = NewBinary(cx, TOK_EQOP, op, pn, RelExpr(cx, ts, tc), tc);
 
-        if (cx->lint && pn->pn_type == TOK_EQOP &&
+        if (cx->lint && pn && pn->pn_type == TOK_EQOP &&
             pn->pn_op != JSOP_NEW_EQ && pn->pn_op != JSOP_NEW_NE &&
             (!AllowImplicitConversionOnCompare(cx, pn->pn_left) ||
             !AllowImplicitConversionOnCompare(cx, pn->pn_right))) {
@@ -3180,9 +3179,6 @@ MarkIfDefined(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *
     JSStackFrame *curframe;
     JSStmtInfo *curstmt;
 
-    const char *name;
-    name = js_AtomToPrintableString(cx, pn->pn_atom);
-
     atom = pn->pn_atom;
     scope = cx->fp->scopeChain;
 
@@ -3545,7 +3541,7 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 tc->flags |= TCF_FUN_HEAVYWEIGHT;
             }
 
-            if (cx->lint && !MarkIfDefined(cx, ts,tc, pn))
+            if (cx->lint && !MarkIfDefined(cx, ts, tc, pn))
                 return NULL;
         }
         break;
