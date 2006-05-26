@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1m"
+#define JSL_VERSION "0.2.0"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -186,6 +186,7 @@ JSLScriptList gScriptList;
 JSBool gAlwaysUseOptionExplicit = JS_FALSE;
 JSBool gLambdaAssignRequiresSemicolon = JS_TRUE;
 JSBool gRecurse = JS_FALSE;
+JSBool gShowFileListing = JS_TRUE;
 JSBool gShowContext = JS_TRUE;
 // Error format; this is the default for backward compatibility reasons
 char gOutputFormat[MAX_CONF_LINE+1] = "__FILE__(__LINE__): __ERROR__";
@@ -809,8 +810,10 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
     if (!tmp_result)
         return JS_TRUE;
 
-    fputs(GetFileName(filename), stdout);
-    fputc('\n', stdout);
+    if (gShowFileListing) {
+        fputs(GetFileName(filename), stdout);
+        fputc('\n', stdout);
+    }
 
     file = fopen(filename, "r");
     if (!file) {
@@ -1454,7 +1457,7 @@ usage(void)
 {
     fprintf(stdout, "\nJavaScript Lint %s (%s)\n", JSL_VERSION, JS_GetImplementationVersion());
     fprintf(stdout, "usage: jsl [help:conf] [conf filename] [process filename] [stdin]\n"
-        "\t[+recurse|-recurse] [+context|-context] [nologo] [nosummary]");
+        "\t[+recurse|-recurse] [+context|-context] [nologo] [nofilelisting] [nosummary]");
 #ifdef WIN32
     fprintf(stdout, " [pauseatend]");
 #endif
@@ -1803,6 +1806,9 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
             }
             else if (strcasecmp(parm, "nologo") == 0) {
                 argPrintLogo = JS_FALSE;
+            }
+            else if (strcasecmp(parm, "nofilelisting") == 0) {
+                gShowFileListing = JS_FALSE;
             }
             else if (strcasecmp(parm, "nosummary") == 0) {
                 argPrintSummary = JS_FALSE;
