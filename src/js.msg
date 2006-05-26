@@ -274,3 +274,5 @@ MSG_DEF(JSMSG_PARTIAL_OPTION_EXPLICIT,191, 0, JSEXN_SYNTAXERR, "the \"option exp
 MSG_DEF(JSMSG_DUP_OPTION_EXPLICIT,    192, 0, JSEXN_SYNTAXERR, "duplicate \"option explicit\" control comment")
 MSG_DEF(JSMSG_UNDECLARED_IDENTIFIER,  193, 1, JSEXN_SYNTAXERR, "undeclared identifier: {0}")
 MSG_DEF(JSMSG_INVALID_CONTROL_COMMENT,194, 0, JSEXN_SYNTAXERR, "invalid control comment")
+MSG_DEF(JSMSG_USELESS_ASSIGN,         195, 0, JSEXN_SYNTAXERR, "useless assignment")
+MSG_DEF(JSMSG_AMBIGUOUS_NESTED_STMT,  196, 0, JSEXN_SYNTAXERR, "block statements containing block statements should use curly braces to resolve ambiguity")

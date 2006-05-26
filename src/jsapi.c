@@ -1074,7 +1074,7 @@ JS_SetGlobalObject(JSContext *cx, JSObject *obj)
 
 JS_PUBLIC_API(JSBool)
 JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
-                      JSLImportCallback importCallback, void *parms)
+                      JSBool alwaysUseOptionExplicit, JSLImportCallback importCallback, void *parms)
 {
     JSLint *newLint;
     newLint = JS_malloc(cx, sizeof(JSLint));
@@ -1086,6 +1086,7 @@ JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectLi
     newLint->importCallbackParms = parms;
     newLint->scriptIdentifiers = curScriptIdentifiers;
     newLint->dependencyList = dependencyIdentifiers;
+    newLint->alwaysUseOptionExplicit = alwaysUseOptionExplicit;
     newLint->down = cx->lint;
     cx->lint = newLint;
     return JS_TRUE;

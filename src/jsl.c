@@ -40,28 +40,28 @@
 /*
  * JavaScript lint.
  */
-#include "../src/jsstddef.h"
+#include "jsstddef.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "../src/jstypes.h"
-#include "../src/jsarena.h"
-#include "../src/jsutil.h"
-#include "../src/jsprf.h"
-#include "../src/jsapi.h"
-#include "../src/jsatom.h"
-#include "../src/jscntxt.h"
-#include "../src/jsdbgapi.h"
-#include "../src/jsemit.h"
-#include "../src/jsfun.h"
-#include "../src/jsgc.h"
-#include "../src/jslock.h"
-#include "../src/jsobj.h"
-#include "../src/jsparse.h"
-#include "../src/jsscope.h"
-#include "../src/jsscript.h"
-#include "../src/jsstr.h"
+#include "jstypes.h"
+#include "jsarena.h"
+#include "jsutil.h"
+#include "jsprf.h"
+#include "jsapi.h"
+#include "jsatom.h"
+#include "jscntxt.h"
+#include "jsdbgapi.h"
+#include "jsemit.h"
+#include "jsfun.h"
+#include "jsgc.h"
+#include "jslock.h"
+#include "jsobj.h"
+#include "jsparse.h"
+#include "jsscope.h"
+#include "jsscript.h"
+#include "jsstr.h"
 
 #ifdef XP_UNIX
 #include <unistd.h>
@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1e"
+#define JSL_VERSION "0.1f"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -144,12 +144,12 @@ const char *placeholders[] = {
     ((errnum) != JSMSG_INVALID_CONTROL_COMMENT))
 
 #define WARNING_PREFIX          "warning";
-#define STRICT_WARNING_PREFIX   "strict warning";
+#define STRICT_WARNING_PREFIX   "warning";
 #define LINT_WARNING_PREFIX     "lint warning";
 
 char *errorNames[JSErr_Limit] = {
 #define MSG_DEF(name, number, count, exception, format) #name,
-#include "../src/js.msg"
+#include "js.msg"
 #undef MSG_DEF
 };
 
@@ -185,6 +185,7 @@ JSLScriptList gScriptList;
 
 
 /* settings */
+JSBool gAlwaysUseOptionExplicit = JS_FALSE;
 JSBool gRecurse = JS_FALSE;
 JSBool gShowContext = JS_TRUE;
 // Error format; this is the default for backward compatibility reasons
@@ -197,7 +198,7 @@ JSBool showErrMsgs[JSErr_Limit] = {
 #define MSG_DEF(name, number, count, exception, format) \
     (number != JSMSG_BLOCK_WITHOUT_BRACES && \
     number != JSMSG_MISSING_OPTION_EXPLICIT),
-#include "../src/js.msg"
+#include "js.msg"
 #undef MSG_DEF
 };
 
@@ -848,7 +849,8 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
     importParms.script = scriptInfo;
     importParms.dependencies = &dependencies;
 
-    if (JS_PushLintIdentifers(cx, scriptInfo->obj, &dependencies, ImportScript, &importParms)) {
+    if (JS_PushLintIdentifers(cx, scriptInfo->obj, &dependencies,
+                              gAlwaysUseOptionExplicit, ImportScript, &importParms)) {
         tmp_result = ProcessScriptContents(cx, obj, GetFileTypeFromPath(filename), filename,
             contents, ImportScript, &importParms);
         JS_PopLintIdentifers(cx);
@@ -876,12 +878,14 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
 {
     JSScript *script;
     int lineno;
-    JSBool containsHTML;
+    JSBool isHTMLFile;
+    JSBool containsHTMLScript, containsHTMLStartTag, containsHTMLEndTag;
     const char *contentsPos;
     contentsPos = contents;
 
     lineno = 1;
-    containsHTML = JS_FALSE;
+    isHTMLFile = JS_FALSE;
+    containsHTMLScript = containsHTMLStartTag = containsHTMLEndTag = JS_FALSE;
 
     /* yech... */
     if (type == JSL_FILETYPE_UNKNOWN || type == JSL_FILETYPE_HTML) {
@@ -889,6 +893,12 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
             COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
             if (!*contentsPos)
                 break;
+
+            /* see if this is disproved by garbage after the end HTML tag */
+            if (isHTMLFile && !containsHTMLScript && containsHTMLStartTag && containsHTMLEndTag) {
+                if (!isspace(*contentsPos))
+                    isHTMLFile = JS_FALSE;
+            }
 
             if (*contentsPos != '<') {
                 contentsPos++;
@@ -908,10 +918,44 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
             if (!*contentsPos)
                 break;
 
-            if (strncasecmp(contentsPos, "html", 4) == 0 && !isalnum(*(contentsPos+4))) {
-                /* html tag, so it must be an HTML file */
+            if (containsHTMLStartTag && *contentsPos == '/') {
+                contentsPos++;
+                COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
+                if (!*contentsPos)
+                    break;
+
+                if (strncasecmp(contentsPos, "html", 4) == 0 && !isalnum(*(contentsPos+4))) {
+                    contentsPos += 4;
+                    COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
+                    if (!*contentsPos)
+                        break;
+
+                    /* skip whitespace */
+                    while (*contentsPos) {
+                        COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
+                        if (!*contentsPos)
+                            break;
+                        if (!isspace(*contentsPos))
+                            break;
+                        contentsPos++;
+                    }
+                    if (!*contentsPos)
+                        break;
+
+                    if (*contentsPos == '>') {
+                        containsHTMLEndTag = JS_TRUE;
+                        /* may be disproven later */
+                        isHTMLFile = JS_TRUE;
+                    }
+
+                    contentsPos++;
+                    COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
+                }
+            }
+            else if (strncasecmp(contentsPos, "html", 4) == 0 && !isalnum(*(contentsPos+4))) {
+                /* html tag */
                 contentsPos += 4;
-                containsHTML = JS_TRUE;
+                containsHTMLStartTag = JS_TRUE;
             }
             else if (strncasecmp(contentsPos, "script", 6) != 0 || isalnum(*(contentsPos+6))) {
                 /* not the script tag that we're looking for */
@@ -1084,7 +1128,8 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                     return JS_FALSE;
                 }
 
-                containsHTML = JS_TRUE;
+                isHTMLFile = JS_TRUE;
+                containsHTMLScript = JS_TRUE;
                 if (startOfScript != endOfScript) {
                     script = JS_CompileScript(cx, obj, startOfScript, endOfScript - startOfScript, path, lineStartOfScript);
                     if (script)
@@ -1099,7 +1144,7 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
     }
 
     /* if the type wasn't known, treat as JS if no hardcoded HTML tags were found */
-    if ((type == JSL_FILETYPE_UNKNOWN && !containsHTML) ||
+    if ((type == JSL_FILETYPE_UNKNOWN && !isHTMLFile) ||
         type == JSL_FILETYPE_JS) {
         contentsPos = contents;
 
@@ -1270,7 +1315,7 @@ PrintDefaultConf(void)
     // keep in sync with ProcessConf
     #define MSG_DEF(name, number, count, exception, format) \
     { if (CAN_DISABLE_WARNING(number)) PrintConfErrName(number, format); }
-    #include "../src/js.msg"
+    #include "js.msg"
     #undef MSG_DEF
 
     fputs(
@@ -1296,6 +1341,10 @@ PrintDefaultConf(void)
 
     fputs(
         "\n\n### Defining identifiers\n"
+        "# By default, \"option explicit\" is enabled on a per-file basis.\n"
+        "# To enable this for all files, use \"+always_use_option_explicit\"\n"
+        "-always_use_option_explicit\n"
+        "\n"
         "# Define certain identifiers of which the lint is not aware.\n"
         "# (Use this in conjunction with the \"undeclared identifier\" warning.)\n"
         "#\n"
@@ -1517,6 +1566,9 @@ ProcessSettingErr_Garbage:
                     return LintConfError(cx, filename, lineno, "-output-format is an invalid setting");
                 }
                 strncpy(gOutputFormat, linepos, sizeof(gOutputFormat)-1);
+            }
+            else if (strcasecmp(linepos, "always_use_option_explicit") == 0) {
+               gAlwaysUseOptionExplicit = enable;
             }
             else if (strncasecmp(linepos, "define", strlen("define")) == 0) {
                 jsval val;
@@ -1905,7 +1957,7 @@ main(int argc, char **argv, char **envp)
         gShowContext = JS_FALSE;
 
         #define MSG_DEF(name, number, count, exception, format) showErrMsgs[number] = JS_TRUE;
-        #include "../src/js.msg"
+        #include "js.msg"
         #undef MSG_DEF
 
         showErrMsgs[JSMSG_MISSING_OPTION_EXPLICIT] = JS_FALSE;
@@ -1921,7 +1973,7 @@ main(int argc, char **argv, char **envp)
             fputs("Error", stdout);
             result = 1;
         }
-        else if (JS_PushLintIdentifers(cx, NULL, NULL, NULL, NULL)) {
+        else if (JS_PushLintIdentifers(cx, NULL, NULL, JS_FALSE, NULL, NULL)) {
             /* read */
             contents = (char*)JS_malloc(cx, len+1);
             contentsPos = contents;

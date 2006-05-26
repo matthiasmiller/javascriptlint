@@ -474,6 +474,32 @@ function BlockWithoutBraces() {
     /* while */
     while (i > 0)
         s += "~";
+
+    /* illegal */
+    if (i)
+        if (s) {
+            i = s;
+        }
+        else {
+            s = i;
+        }
+
+    /* illegal */
+    if (i)
+        while (s) {
+            i = s;
+        }
+
+    /* illegal */
+    if (i)
+        do {
+            i = s;
+        } while (s);
+
+    /* illegal */
+    if (i)
+        for (i = 0; i < 1; i++) {
+        }
 }
 
 function MissingBreak() {
@@ -675,6 +701,151 @@ function IncDec() {
     s = --i;
 }
 
+function Assign() {
+    var i, o;
+
+    /* illegal */
+    var s = s;
+
+    /* illegal */
+    o = o;
+
+    /* illegal */
+    for (i = i; ; ) {
+        i++;
+    }
+    /* illegal */
+    for (; i = i; ) {
+        i++;
+    }
+    /* illegal */
+    for (; ; i = i) {
+        i++;
+    }
+}
+
+function FunctionWithNoReturn() {
+    var i, o;
+
+    /* illegal */
+    var s = FunctionWithNoReturn();
+
+    /* illegal */
+    o = FunctionWithNoReturn();
+
+    /* illegal */
+    for (i = FunctionWithNoReturn(); ; ) {
+        i++;
+    }
+
+    /* illegal */
+    if (FunctionWithNoReturn()) {
+        i--;
+    }
+}
+
+/* illegal */
+g = FunctionWithNoReturn();
+
+/* legal */
+FunctionWithNoReturn();
+
+/*@ignore@*/
+g = FunctionWithNoReturn();
+/*@end@*/
+
+function FunctionWithReturn() {
+    var i, o;
+
+    /* legal */
+    var s = FunctionWithReturn();
+
+    /* legal */
+    o = FunctionWithReturn();
+
+    /* legal */
+    for (i = FunctionWithReturn(); ; ) {
+        i++;
+    }
+
+    /* legal */
+    if (FunctionWithReturn()) {
+        i--;
+    }
+
+    return "";
+}
+
+/* legal */
+FunctionWithReturn();
+
+/* legal */
+g = FunctionWithReturn();
+
+function Comparisons() {
+    var i, j;
+
+    /* illegal -- always false */
+    if (i+2 < i+2) {
+        return;
+    }
+    /* illegal - always false */
+    if (j != j) {
+        i++;
+    }
+    /* illegal - always true */
+    if ((14 * i) / (j - 2) >= (14 * i) / (j - 2)) {
+        return;
+    }
+    /* illegal - same properties */
+    if (o.left == o.left) {
+        return;
+    }
+    /* illegal - same properties */
+    if (o.left == o['left']) {
+        return;
+    }
+    /* illegal - same properties */
+    if (o['left'] == o['left']) {
+        return;
+    }
+    /* illegal - same properties */
+    if (o[i] == o[i]) {
+        return;
+    }
+
+    /* legal - different properties */
+    if (o.left == o.right) {
+        return;
+    }
+    /* legal - different properties */
+    if (o['left'] == o.right) {
+        return;
+    }
+    /* legal - different properties */
+    if (o['left'] == o['right']) {
+        return;
+    }
+    /* legal - different properties */
+    if (o[i] == o[j]) {
+        return;
+    }
+    /* legal - different properties */
+    if (o[i] == o.right) {
+        return;
+    }
+
+    /* "legal" (not caught because of slight differences) */
+    if ((14 * i) / (j - 2) == (i * 14) / (j - 2)) {
+        return;
+    }
+
+    /* legal - does function have side affects? */
+    if (Comparisons() == Comparisons()) {
+        return;
+    }
+}
+
 /* "legal" - can do anything */
 /*@ignore@*/
 var a;
@@ -682,6 +853,11 @@ if (a);
    var b = a = b+++a;
    var a = b;
 /*@end@*/
+
+/* legal - case doesn't matter */
+/*@IGNORE@*/
+asdf = asdf;
+/*@End@*/
 
 /* illegal - missing start/end */
 /*control comment ends but doesn't start@*/

@@ -95,7 +95,7 @@ $(OBJDIR)/%.obj: %.c
 	@$(MAKE_OBJDIR)
 	$(CC) -Fo$(OBJDIR)/ -c $(CFLAGS) $(JSDLL_CFLAGS) $*.c
 
-$(OBJDIR)/js.obj: js.c
+$(OBJDIR)/jsl.obj: jsl.c
 	@$(MAKE_OBJDIR)
 	$(CC) -Fo$(OBJDIR)/ -c $(CFLAGS) $<
 

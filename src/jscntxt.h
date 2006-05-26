@@ -315,14 +315,18 @@ typedef struct JSLint {
     JSLImportCallback   importCallback;
     void                *importCallbackParms;
 
+    JSBool              alwaysUseOptionExplicit;
+
     JSBool              hasCompletedPartialScript;
 
     /* control comments */
     JSBool              controlCommentsIgnore;
-    JSBool              optionExplicit;
+    JSBool              controlCommentsOptionExplicit;
 
     struct JSLint       *down;
 } JSLint;
+
+#define JSL_IDENTIFIER_FUNC_NO_RETURN   0x1
 
 #define SHOULD_IGNORE_LINT_WARNINGS(cx) (!(cx)->lint || (cx)->lint->controlCommentsIgnore)
 
