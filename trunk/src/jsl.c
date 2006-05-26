@@ -81,6 +81,7 @@
 #include <conio.h>
 #endif
 
+#define JSL_VERSION "0.1b"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -1250,7 +1251,7 @@ PrintDefaultConf(void)
 {
     fputs(
         "#\n"
-        "# JavaScript Lint Configuration File\n"
+        "# JavaScript Lint " JSL_VERSION " Configuration File\n"
         "#\n"
         "# This file can be used to lint a collection of scripts, or to enable\n"
         "# or disable warnings for scripts that are linted via the command line.\n"
@@ -1321,7 +1322,7 @@ PrintDefaultConf(void)
 static int
 usage(void)
 {
-    fprintf(stdout, "\nJavaScript Lint (%s)\n", JS_GetImplementationVersion());
+    fprintf(stdout, "\nJavaScript Lint %s (%s)\n", JSL_VERSION, JS_GetImplementationVersion());
     fprintf(stdout, "usage: jsl [help:conf] [conf filename] [+recurse|-recurse] [process filename] [+context|-context]");
 #ifdef WIN32
     fprintf(stdout, " [pauseatend]");
@@ -1902,6 +1903,8 @@ main(int argc, char **argv, char **envp)
         #define MSG_DEF(name, number, count, exception, format) showErrMsgs[number] = JS_TRUE;
         #include "../src/js.msg"
         #undef MSG_DEF
+
+        showErrMsgs[JSMSG_MISSING_OPTION_EXPLICIT] = JS_FALSE;
 
         strcpy(gOutputFormat, "__LINE__,__COL__,__ERROR_NAME__,__ERROR_PREFIX__,__ERROR_MSGENC__");
 

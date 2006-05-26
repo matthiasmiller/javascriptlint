@@ -1529,7 +1529,7 @@ skipline:
     }
 
     /* check tokens on end of line */
-    if (cx->lint && hasLineBreak &&
+    if (cx->lint && hasLineBreak && origtoken &&
         !AllowNewlineBetweenTokens(origtoken, (JSTokenType)c)) {
         if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING |
