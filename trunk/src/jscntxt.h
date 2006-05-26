@@ -375,7 +375,7 @@ struct JSContext {
     /* Stack arena pool and frame pointer register. */
     JSArenaPool         stackPool;
     JSStackFrame        *fp;
-
+    
     /* Temporary arena pool used while compiling and decompiling. */
     JSArenaPool         tempPool;
 
