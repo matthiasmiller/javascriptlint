@@ -680,6 +680,13 @@ if (a);
    var a = b;
 /*@end@*/
 
+/* illegal - missing start/end */
+/*control comment ends but doesn't start@*/
+/*@control comment starts but doesn't end*/
+
+/* illegal - unrecognized */
+/*@bogon@*/
+
 /* illegal - not ending anything */
 /*@end@*/
 

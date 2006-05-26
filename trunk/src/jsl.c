@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1c"
+#define JSL_VERSION "0.1d"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -1394,7 +1394,7 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *proc
         return EXITCODE_FILE_ERROR;
     }
 
-    fprintf(stdout, "JavaScript Lint (%s)\n\n", JS_GetImplementationVersion());
+    fprintf(stdout, "JavaScript Lint %s (%s)\n\n", JSL_VERSION, JS_GetImplementationVersion());
 
     ch = 0;
     lineno = 1;

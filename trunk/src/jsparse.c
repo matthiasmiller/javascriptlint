@@ -609,8 +609,8 @@ js_CompileTokenStream(JSContext *cx, JSObject *chain, JSTokenStream *ts,
                 if (!WarnUndeclaredIdentifiers(cg, cx, ts, &cg->treeContext, pn))
                     ok = JS_FALSE;
             }
-            else {
-                /* warn about missing "option explicit" */
+            else if (!cx->lint->hasCompletedPartialScript) {
+                /* warn about missing "option explicit" (but only once) */
                 if (!js_ReportCompileErrorNumber(cx, ts, cg, JSREPORT_WARNING, JSMSG_MISSING_OPTION_EXPLICIT))
                     ok = JS_FALSE;
             }
