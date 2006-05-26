@@ -1358,6 +1358,11 @@ skipline:
                         RETURN(TOK_ERROR);
                     }
                 }
+                else if (startedControlComment && endedControlComment) {
+                    /* looked like a control comment */
+                    if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_CONTROL_COMMENT))
+                        RETURN(TOK_ERROR);
+                }
             }
 
             if (c == EOF) {

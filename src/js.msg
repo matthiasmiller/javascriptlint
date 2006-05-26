@@ -273,4 +273,4 @@ MSG_DEF(JSMSG_MISSING_OPTION_EXPLICIT,190, 0, JSEXN_SYNTAXERR, "the \"option exp
 MSG_DEF(JSMSG_PARTIAL_OPTION_EXPLICIT,191, 0, JSEXN_SYNTAXERR, "the \"option explicit\" control comment, if used, must be in the first script tag")
 MSG_DEF(JSMSG_DUP_OPTION_EXPLICIT,    192, 0, JSEXN_SYNTAXERR, "duplicate \"option explicit\" control comment")
 MSG_DEF(JSMSG_UNDECLARED_IDENTIFIER,  193, 1, JSEXN_SYNTAXERR, "undeclared identifier: {0}")
-MSG_DEF(JSMSG_INVALID_CONTROL_COMMENT,194, 1, JSEXN_SYNTAXERR, "invalid control comment")
+MSG_DEF(JSMSG_INVALID_CONTROL_COMMENT,194, 0, JSEXN_SYNTAXERR, "invalid control comment")
