@@ -125,7 +125,9 @@ JS_BEGIN_EXTERN_C
                                            object that delegates to a prototype
                                            containing this property */
 #define JSPROP_INDEX            0x80    /* name is actually (jsint) index */
-#define JSPROP_DECLARED        0x160    /* name is declared */
+#define JSPROP_LINT_IGNORE     0x100    /* should ignore per control comment */
+#define JSPROP_LINT_DECLARED   0x200    /* name is declared */
+#define JSPROP_LINT_OK_RET_VAL 0x400    /* already checked for use of return value */
 
 /* Function flags, set in JSFunctionSpec and passed to JS_NewFunction etc. */
 #define JSFUN_LAMBDA            0x08    /* expressed, not declared, function */
@@ -463,7 +465,7 @@ JS_SetGlobalObject(JSContext *cx, JSObject *obj);
 
 extern JS_PUBLIC_API(JSBool)
 JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
-                      JSLImportCallback importCallback, void *parms);
+                      JSBool alwaysUseOptionExplicit, JSLImportCallback importCallback, void *parms);
 
 extern JS_PUBLIC_API(void)
 JS_PopLintIdentifers(JSContext *cx);

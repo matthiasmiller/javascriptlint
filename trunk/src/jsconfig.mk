@@ -126,7 +126,7 @@ ifdef JS_LIVECONNECT
 endif
 SHIP_INCS     := $(addprefix $(SHIP_DIST)/include/, $(SHIP_INCS))
 
-SHIP_BINS      = js
+SHIP_BINS      = jsl
 ifdef JS_LIVECONNECT
   SHIP_BINS   += lcshell
 endif

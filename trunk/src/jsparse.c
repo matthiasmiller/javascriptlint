@@ -409,94 +409,133 @@ js_ParseTokenStream(JSContext *cx, JSObject *chain, JSTokenStream *ts)
 }
 
 static JSBool
-WarnUndeclaredIdentifiers(JSCodeGenerator *cg, JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn)
+FindLintIdentifier(JSContext *cx, jsid id, JSObject **objp, JSProperty **propp, jsval *val)
+{
+    *objp = NULL;
+    *propp = NULL;
+
+    if (cx->lint && cx->lint->scriptIdentifiers &&
+        !OBJ_LOOKUP_PROPERTY(cx, cx->lint->scriptIdentifiers, id, objp, propp)) {
+        return JS_FALSE;
+    }
+    if (*objp) {
+        if (val && !OBJ_GET_PROPERTY(cx, cx->lint->scriptIdentifiers, id, val))
+            return JS_FALSE;
+        return JS_TRUE;
+    }
+
+    if (cx->lint && cx->lint->dependencyList) {
+        JSLObjectList *cur = (JSLObjectList*)JS_LIST_HEAD(&cx->lint->dependencyList->links);
+        while (cur != cx->lint->dependencyList) {
+            /* look up property in dependency */
+            if (!OBJ_LOOKUP_PROPERTY(cx, cur->obj, id, objp, propp))
+                return JS_FALSE;
+            if (*objp) {
+                if (val && !OBJ_GET_PROPERTY(cx, cx->lint->scriptIdentifiers, id, val))
+                    return JS_FALSE;
+                return JS_TRUE;
+            }
+            cur = (JSLObjectList*)JS_NEXT_LINK(&cur->links);
+        }
+    }
+
+    return JS_TRUE;
+}
+
+static JSBool
+WarnUndeclaredIdentifiers(JSCodeGenerator *cg, JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
+                          JSParseNode *pn, JSParseNode *parentNode, JSParseNode *grandParentNode)
 {
     JSParseNode *pn2;
 
     if (!pn)
         return JS_TRUE;
 
-    if (pn->pn_type == TOK_NAME && (pn->pn_attrs & JSPROP_DECLARED) == 0) {
-        JSTreeContext *curtc;
-        JSAtomListElement *ale;
+    if (pn->pn_type == TOK_NAME && (pn->pn_attrs & JSPROP_LINT_IGNORE) == 0) {
+        if ((pn->pn_attrs & JSPROP_LINT_DECLARED) == 0) {
+            JSTreeContext *curtc;
+            JSAtomListElement *ale;
 
-        curtc = tc;
-        while (curtc) {
-            ATOM_LIST_SEARCH(ale, &curtc->decls, pn->pn_atom);
-            if (ale && (ALE_JSOP(ale) == JSOP_DEFFUN || ALE_JSOP(ale) == JSOP_CLOSURE)) {
+            curtc = tc;
+            while (curtc) {
+                ATOM_LIST_SEARCH(ale, &curtc->decls, pn->pn_atom);
+                if (ale && (ALE_JSOP(ale) == JSOP_DEFFUN || ALE_JSOP(ale) == JSOP_CLOSURE)) {
                 /* variables should have been detected previously */
-                break;
-            }
-            else {
-                /* hack : temporarily change current line for error reporting */
-                JSBool res;
-                uintN start = CG_CURRENT_LINE(cg);
-                const char *name = js_AtomToPrintableString(cx, pn->pn_atom);
+                    break;
+                }
+                else {
+                    /* hack : temporarily change current line for error reporting */
+                    JSBool res;
+                    uintN start = CG_CURRENT_LINE(cg);
+                    const char *name = js_AtomToPrintableString(cx, pn->pn_atom);
 
-                CG_CURRENT_LINE(cg) = pn->pn_pos.begin.lineno;
-                res = js_ReportCompileErrorNumber(cx, NULL, cg,
-                                                  JSREPORT_WARNING |
-                                                  JSREPORT_STRICT,
-                                                  JSMSG_UNDECLARED_IDENTIFIER,
-                                                  name);
-                CG_CURRENT_LINE(cg) = start;
+                    CG_CURRENT_LINE(cg) = pn->pn_pos.begin.lineno;
+                    res = js_ReportCompileErrorNumber(cx, NULL, cg,
+                                                      JSREPORT_WARNING |
+                                                      JSREPORT_STRICT,
+                                                      JSMSG_UNDECLARED_IDENTIFIER,
+                                                      name);
+                    CG_CURRENT_LINE(cg) = start;
 
-                if (!res)
-                    return JS_FALSE;
+                    if (!res)
+                        return JS_FALSE;
+                }
+                curtc = curtc->down;
             }
-            curtc = curtc->down;
         }
     }
 
     switch (pn->pn_arity) {
       case PN_LIST:
         for (pn2 = pn->pn_head; pn2; pn2 = pn2->pn_next) {
-            if (!WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn2)) {
+            if (!WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn2, pn, parentNode)) {
                 return JS_FALSE;
             }
         }
         return JS_TRUE;
       case PN_TERNARY:
-        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid1) &&
-            WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid2) &&
-            WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid3);
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid1, pn, parentNode) &&
+            WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid2, pn, parentNode) &&
+            WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid3, pn, parentNode);
       case PN_BINARY:
-        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_left) &&
-            WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_right);
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_left, pn, parentNode) &&
+            WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_right, pn, parentNode);
       case PN_UNARY:
-        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid);
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid, pn, parentNode);
       case PN_NAME:
-        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_expr);
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_expr, pn, parentNode);
       case PN_FUNC:
-        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_body);
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_body, pn, parentNode);
       default:
         return JS_TRUE;
     }
 }
 
 static JSBool
-MarkDeclaredIdentifiers(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn)
+MarkDeclaredIdentifiers(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn,
+                        JSParseNode *parentNode, JSParseNode *grandParentNode)
 {
     JSParseNode *pn2;
 
     if (!pn)
         return JS_TRUE;
 
-    if (pn->pn_type == TOK_NAME && (pn->pn_attrs & JSPROP_DECLARED) == 0) {
-        JSTreeContext *curtc;
-        JSAtomListElement *ale;
-
+    if (pn->pn_type == TOK_NAME) {
         if (cx->lint->controlCommentsIgnore) {
             /* nasty, but undeclared identifiers aren't warned against until end */
-            pn->pn_attrs |= JSPROP_DECLARED;
+            pn->pn_attrs |= JSPROP_LINT_IGNORE;
         }
-        else {
+        else if ((pn->pn_attrs & JSPROP_LINT_DECLARED) == 0 &&
+            (pn->pn_attrs & JSPROP_LINT_OK_RET_VAL) == 0) {
+            JSTreeContext *curtc;
+            JSAtomListElement *ale;
+
             curtc = tc;
             while (curtc) {
                 ATOM_LIST_SEARCH(ale, &curtc->decls, pn->pn_atom);
+                /* variables should have been detected previously */
                 if (ale && (ALE_JSOP(ale) == JSOP_DEFFUN || ALE_JSOP(ale) == JSOP_CLOSURE)) {
-                    /* variables should have been detected previously */
-                    pn->pn_attrs |= JSPROP_DECLARED;
+                    pn->pn_attrs |= JSPROP_LINT_DECLARED;
                     break;
                 }
                 curtc = curtc->down;
@@ -507,24 +546,24 @@ MarkDeclaredIdentifiers(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSP
     switch (pn->pn_arity) {
       case PN_LIST:
         for (pn2 = pn->pn_head; pn2; pn2 = pn2->pn_next) {
-            if (!MarkDeclaredIdentifiers(cx, ts, tc, pn2)) {
+            if (!MarkDeclaredIdentifiers(cx, ts, tc, pn2, pn, parentNode)) {
                 return JS_FALSE;
             }
         }
         return JS_TRUE;
       case PN_TERNARY:
-        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid1) &&
-            MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid2) &&
-            MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid3);
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid1, pn, parentNode) &&
+            MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid2, pn, parentNode) &&
+            MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid3, pn, parentNode);
       case PN_BINARY:
-        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_left) &&
-            MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_right);
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_left, pn, parentNode) &&
+            MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_right, pn, parentNode);
       case PN_UNARY:
-        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid);
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid, pn, parentNode);
       case PN_NAME:
-        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_expr);
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_expr, pn, parentNode);
       case PN_FUNC:
-        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_body);
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_body, pn, parentNode);
       default:
         return JS_TRUE;
     }
@@ -603,10 +642,13 @@ js_CompileTokenStream(JSContext *cx, JSObject *chain, JSTokenStream *ts,
             !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_MISMATCH_CTRL_COMMENTS)) {
             ok = JS_FALSE;
         }
+        /* forcibly turn off ignore so undeclared identifier warnings are displayed */
+        cx->lint->controlCommentsIgnore = JS_FALSE;
+
         if (ok) {
-            if (cx->lint->optionExplicit) {
+            if (cx->lint->alwaysUseOptionExplicit || cx->lint->controlCommentsOptionExplicit) {
                 /* warn against undeclared identifiers */
-                if (!WarnUndeclaredIdentifiers(cg, cx, ts, &cg->treeContext, pn))
+                if (!WarnUndeclaredIdentifiers(cg, cx, ts, &cg->treeContext, pn, NULL, NULL))
                     ok = JS_FALSE;
             }
             else if (!cx->lint->hasCompletedPartialScript) {
@@ -781,7 +823,8 @@ FunctionBody(JSContext *cx, JSTokenStream *ts, JSFunction *fun,
     }
 
     cx->fp = fp;
-    tc->flags = oldflags | (tc->flags & TCF_FUN_FLAGS);
+    /* pass thru return value information for lint */
+    tc->flags = oldflags | (tc->flags & TCF_FUN_FLAGS) | (cx->lint ? (tc->flags & TCF_RETURN_EXPR) : 0);
     return pn;
 }
 
@@ -1018,7 +1061,13 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
             /* save global identifier for lint */
             if (cx->lint && cx->lint->scriptIdentifiers && !tc->down) {
                 jsval val;
-                val = JSVAL_VOID;
+                int flags;
+
+                flags = 0;
+                if ((funtc.flags & TCF_RETURN_EXPR) == 0)
+                    flags |= JSL_IDENTIFIER_FUNC_NO_RETURN;
+                val = INT_TO_JSVAL(flags);
+
                 if (!js_SetProperty(cx, cx->lint->scriptIdentifiers, (jsid)funAtom, &val))
                     return NULL;
             }
@@ -1110,7 +1159,7 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
 
     /* Flag declared identifiers before this goes out of scope */
     if (cx->lint)
-        MarkDeclaredIdentifiers(cx, ts, &funtc, pn);
+        MarkDeclaredIdentifiers(cx, ts, &funtc, pn, NULL, NULL);
 
     return pn;
 }
@@ -1479,7 +1528,15 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
           case STMT_FOR_LOOP:
           case STMT_FOR_IN_LOOP:
           case STMT_WHILE_LOOP:
-            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+            if (tt == TOK_IF || tt == TOK_WHILE || tt == TOK_DO || tt == TOK_FOR || tt == TOK_WITH) {
+                if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 JSREPORT_WARNING |
+                                                 JSREPORT_STRICT,
+                                                 JSMSG_AMBIGUOUS_NESTED_STMT)) {
+                   return NULL;
+                }
+            }
+            else if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                              JSREPORT_WARNING |
                                              JSREPORT_STRICT,
                                              JSMSG_BLOCK_WITHOUT_BRACES)) {
@@ -1942,7 +1999,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                     return NULL;
             }
 #endif
-            pn3->pn_attrs |= JSPROP_DECLARED;
+            pn3->pn_attrs |= JSPROP_LINT_DECLARED;
             pn2->pn_kid1 = pn3;
 
             MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_AFTER_CATCH);
@@ -2390,7 +2447,7 @@ Variables(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             /* save global identifier for lint */
             if (cx->lint && cx->lint->scriptIdentifiers && !tc->down) {
                 jsval val;
-                val = JSVAL_VOID;
+                val = INT_TO_JSVAL(0);
                 if (!js_SetProperty(cx, cx->lint->scriptIdentifiers, (jsid)atom, &val))
                     return NULL;
             }
@@ -2411,7 +2468,7 @@ Variables(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                         ? JSPROP_ENUMERATE | JSPROP_PERMANENT |
                           JSPROP_READONLY
                         : JSPROP_ENUMERATE | JSPROP_PERMANENT;
-        pn2->pn_attrs |= JSPROP_DECLARED;
+        pn2->pn_attrs |= JSPROP_LINT_DECLARED;
         PN_APPEND(pn, pn2);
 
         if (!OBJ_LOOKUP_PROPERTY(cx, obj, (jsid)atom, &pobj, &prop))
@@ -2521,6 +2578,14 @@ Variables(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                                  : JSOP_SETNAME;
                     if (atom == cx->runtime->atomState.argumentsAtom)
                         tc->flags |= TCF_FUN_HEAVYWEIGHT;
+                    if (cx->lint && pn2->pn_expr->pn_type == TOK_NAME &&
+                        pn2->pn_expr->pn_atom == atom &&
+                        !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                     JSREPORT_WARNING |
+                                                     JSREPORT_STRICT,
+                                                     JSMSG_USELESS_ASSIGN)) {
+                        return NULL;
+                    }
                 }
             }
         }
@@ -2619,6 +2684,16 @@ AssignExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         return NULL;
     }
     pn = NewBinary(cx, TOK_ASSIGN, op, pn2, AssignExpr(cx, ts, tc), tc);
+    if (cx->lint && pn &&
+        pn->pn_left && pn->pn_left->pn_type == TOK_NAME &&
+        pn->pn_right && pn->pn_right->pn_type == TOK_NAME &&
+        pn->pn_left->pn_atom == pn->pn_right->pn_atom &&
+        !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                             JSREPORT_WARNING |
+                                             JSREPORT_STRICT,
+                                             JSMSG_USELESS_ASSIGN)) {
+        return NULL;
+    }
     return pn;
 }
 
@@ -2754,16 +2829,17 @@ EqExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         op = CURRENT_TOKEN(ts).t_op;
         pn = NewBinary(cx, TOK_EQOP, op, pn, RelExpr(cx, ts, tc), tc);
 
-        if (cx->lint && pn && pn->pn_type == TOK_EQOP &&
-            pn->pn_op != JSOP_NEW_EQ && pn->pn_op != JSOP_NEW_NE &&
-            (!AllowImplicitConversionOnCompare(cx, pn->pn_left) ||
-            !AllowImplicitConversionOnCompare(cx, pn->pn_right))) {
+        if (cx->lint && pn && pn->pn_left && pn->pn_right) {
+            if (pn->pn_op != JSOP_NEW_EQ && pn->pn_op != JSOP_NEW_NE &&
+                (!AllowImplicitConversionOnCompare(cx, pn->pn_left) ||
+                !AllowImplicitConversionOnCompare(cx, pn->pn_right))) {
 
-            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
-                                             JSREPORT_WARNING |
-                                             JSREPORT_STRICT,
-                                             JSMSG_COMPARISON_TYPE_CONV)) {
-                return NULL;
+                if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 JSREPORT_WARNING |
+                                                 JSREPORT_STRICT,
+                                                 JSMSG_COMPARISON_TYPE_CONV)) {
+                    return NULL;
+                }
             }
         }
     }
@@ -3183,8 +3259,10 @@ MarkIfDefined(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *
     scope = cx->fp->scopeChain;
 
     /* nasty, but undeclared identifiers aren't warned against until end */
-    if (cx->lint->controlCommentsIgnore)
-        goto success;
+    if (cx->lint->controlCommentsIgnore) {
+        pn->pn_attrs |= JSPROP_LINT_IGNORE;
+        return JS_TRUE;
+    }
 
     if (scope) {
         /* Find the topmost object in the scope chain. */
@@ -3231,29 +3309,16 @@ MarkIfDefined(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *
     }
 
     /* check for previous identifier */
-    if (cx->lint && cx->lint->scriptIdentifiers &&
-        !OBJ_LOOKUP_PROPERTY(cx, cx->lint->scriptIdentifiers, (jsid)atom, &pobj, (JSProperty**)&sprop)) {
+    if (!FindLintIdentifier(cx, (jsid)atom, &pobj, (JSProperty**)&sprop, NULL)) {
         return JS_FALSE;
     }
     if (pobj)
         goto success;
 
-    if (cx->lint && cx->lint->dependencyList) {
-        JSLObjectList *cur = (JSLObjectList*)JS_LIST_HEAD(&cx->lint->dependencyList->links);
-        while (cur != cx->lint->dependencyList) {
-            /* look up property in dependency */
-            if (!OBJ_LOOKUP_PROPERTY(cx, cur->obj, (jsid)atom, &pobj, (JSProperty**)&sprop))
-                return JS_FALSE;
-            if (pobj)
-                goto success;
-            cur = (JSLObjectList*)JS_NEXT_LINK(&cur->links);
-        }
-    }
-
     return JS_TRUE;
 
 success:
-    pn->pn_attrs |= JSPROP_DECLARED;
+    pn->pn_attrs |= JSPROP_LINT_DECLARED;
     return JS_TRUE;
 }
 
@@ -3449,7 +3514,7 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 op = CURRENT_TOKEN(ts).t_op;
                 pn2 = NewBinary(cx, TOK_COLON, op, pn3, AssignExpr(cx, ts, tc),
                                 tc);
-                pn3->pn_attrs |= JSPROP_DECLARED;
+                pn3->pn_attrs |= JSPROP_LINT_DECLARED;
 #if JS_HAS_GETTER_SETTER
               skip:
 #endif

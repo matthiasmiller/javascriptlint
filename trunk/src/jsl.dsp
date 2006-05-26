@@ -95,135 +95,135 @@ SOURCE=.\jsl.c
 # PROP Default_Filter "h;hpp;hxx;hm;inl;fi;fd"
 # Begin Source File
 
-SOURCE=..\src\jsapi.h
+SOURCE=.\jsapi.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsarena.h
+SOURCE=.\jsarena.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsatom.h
+SOURCE=.\jsatom.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsclist.h
+SOURCE=.\jsclist.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jscntxt.h
+SOURCE=.\jscntxt.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jscompat.h
+SOURCE=.\jscompat.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsconfig.h
+SOURCE=.\jsconfig.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jscpucfg.h
+SOURCE=.\jscpucfg.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsdbgapi.h
+SOURCE=.\jsdbgapi.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsemit.h
+SOURCE=.\jsemit.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsfun.h
+SOURCE=.\jsfun.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsgc.h
+SOURCE=.\jsgc.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jshash.h
+SOURCE=.\jshash.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsinterp.h
+SOURCE=.\jsinterp.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jslock.h
+SOURCE=.\jslock.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jslong.h
+SOURCE=.\jslong.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsobj.h
+SOURCE=.\jsobj.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsopcode.h
+SOURCE=.\jsopcode.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsosdep.h
+SOURCE=.\jsosdep.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsotypes.h
+SOURCE=.\jsotypes.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsparse.h
+SOURCE=.\jsparse.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsprf.h
+SOURCE=.\jsprf.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsprvtd.h
+SOURCE=.\jsprvtd.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jspubtd.h
+SOURCE=.\jspubtd.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsregexp.h
+SOURCE=.\jsregexp.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsscan.h
+SOURCE=.\jsscan.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsscope.h
+SOURCE=.\jsscope.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsscript.h
+SOURCE=.\jsscript.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsstddef.h
+SOURCE=.\jsstddef.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsstr.h
+SOURCE=.\jsstr.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jstypes.h
+SOURCE=.\jstypes.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsutil.h
+SOURCE=.\jsutil.h
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\resource.h
+SOURCE=.\resource.h
 # End Source File
 # End Group
 # Begin Group "Resource Files"
@@ -236,7 +236,7 @@ SOURCE=.\Checklist.txt
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\js.msg
+SOURCE=.\js.msg
 # End Source File
 # Begin Source File
 
@@ -244,11 +244,15 @@ SOURCE=".\jsl-test.js"
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsopcode.tbl
+SOURCE=.\jsl.default.conf
 # End Source File
 # Begin Source File
 
-SOURCE=..\src\jsshell.msg
+SOURCE=.\jsopcode.tbl
+# End Source File
+# Begin Source File
+
+SOURCE=.\jsshell.msg
 # End Source File
 # End Target
 # End Project

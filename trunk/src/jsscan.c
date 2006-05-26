@@ -784,7 +784,7 @@ AllowNewlineBetweenTokens(JSToken *tp, JSTokenType tt)
 #define JSL_MATCH_COMMENT(control_comment, c) \
     JS_BEGIN_MACRO \
         if ((control_comment)) { \
-            if (*(control_comment) && *(control_comment) == (c)) \
+            if (*(control_comment) && *(control_comment) == JS_TOLOWER(c)) \
                 (control_comment)++; \
             else \
                 (control_comment) = NULL; \
@@ -1313,7 +1313,7 @@ skipline:
                     cx->lint->controlCommentsIgnore = JS_FALSE;
                 }
                 else if (JSL_MATCHED_COMMENT(controlCommentOptionExplicit)) {
-                    if (cx->lint->optionExplicit) {
+                    if (cx->lint->controlCommentsOptionExplicit) {
                         /* warn about duplicates */
                         if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_DUP_OPTION_EXPLICIT))
                             RETURN(TOK_ERROR);
@@ -1324,7 +1324,7 @@ skipline:
                             RETURN(TOK_ERROR);
                     }
                     else {
-                        cx->lint->optionExplicit = JS_TRUE;
+                        cx->lint->controlCommentsOptionExplicit = JS_TRUE;
                     }
                 }
                 else if (JSL_MATCHED_COMMENT(controlCommentImport)) {
