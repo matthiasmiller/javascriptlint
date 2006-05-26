@@ -98,6 +98,7 @@ struct JSTreeContext {              /* tree context for semantic checks */
     JSStmtInfo      *topStmt;       /* top of statement info stack */
     JSAtomList      decls;          /* function, const, and var declarations */
     JSParseNode     *nodeList;      /* list of recyclable parse-node structs */
+    JSTreeContext   *down;          /* info for enclosing tree context */
 };
 
 #define TCF_COMPILING          0x01 /* generating bytecode; this tc is a cg */
@@ -112,7 +113,7 @@ struct JSTreeContext {              /* tree context for semantic checks */
 
 #define TREE_CONTEXT_INIT(tc)                                                 \
     ((tc)->flags = 0, (tc)->tryCount = 0, (tc)->topStmt = NULL,               \
-     ATOM_LIST_INIT(&(tc)->decls), (tc)->nodeList = NULL)
+     ATOM_LIST_INIT(&(tc)->decls), (tc)->nodeList = NULL, (tc)->down = NULL)
 
 #define TREE_CONTEXT_FINISH(tc)                                               \
     ((void)0)

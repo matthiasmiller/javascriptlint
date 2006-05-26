@@ -130,6 +130,7 @@ typedef struct JSString          JSString;
 typedef struct JSXDRState	 JSXDRState;
 typedef struct JSExceptionState  JSExceptionState;
 typedef struct JSLocaleCallbacks JSLocaleCallbacks;
+typedef struct JSLObjectList     JSLObjectList;
 
 /* JSClass (and JSObjectOps where appropriate) function pointer typedefs. */
 
@@ -558,6 +559,9 @@ typedef JSBool
  */
 typedef JSPrincipals *
 (* JS_DLL_CALLBACK JSObjectPrincipalsFinder)(JSContext *cx, JSObject *obj);
+
+typedef void
+(* JSLImportCallback)(JSContext *cx, const char *path, void *parms);
 
 JS_END_EXTERN_C
 

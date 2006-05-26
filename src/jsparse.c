@@ -408,6 +408,128 @@ js_ParseTokenStream(JSContext *cx, JSObject *chain, JSTokenStream *ts)
     return pn;
 }
 
+static JSBool
+WarnUndeclaredIdentifiers(JSCodeGenerator *cg, JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn)
+{
+    JSParseNode *pn2;
+
+    if (!pn)
+        return JS_TRUE;
+
+    if (pn->pn_type == TOK_NAME && (pn->pn_attrs & JSPROP_DECLARED) == 0) {
+        JSTreeContext *curtc;
+        JSAtomListElement *ale;
+
+        curtc = tc;
+        while (curtc) {
+            ATOM_LIST_SEARCH(ale, &curtc->decls, pn->pn_atom);
+            if (ale && (ALE_JSOP(ale) == JSOP_DEFFUN || ALE_JSOP(ale) == JSOP_CLOSURE)) {
+                /* variables should have been detected previously */
+                break;
+            }
+            else {
+                /* hack : temporarily change current line for error reporting */
+                JSBool res;
+                uintN start = CG_CURRENT_LINE(cg);
+                const char *name = js_AtomToPrintableString(cx, pn->pn_atom);
+
+                CG_CURRENT_LINE(cg) = pn->pn_pos.begin.lineno;
+                res = js_ReportCompileErrorNumber(cx, NULL, cg,
+                                                  JSREPORT_WARNING |
+                                                  JSREPORT_STRICT,
+                                                  JSMSG_UNDECLARED_IDENTIFIER,
+                                                  name);
+                CG_CURRENT_LINE(cg) = start;
+
+                if (!res)
+                    return JS_FALSE;
+            }
+            curtc = curtc->down;
+        }
+    }
+
+    switch (pn->pn_arity) {
+      case PN_LIST:
+        for (pn2 = pn->pn_head; pn2; pn2 = pn2->pn_next) {
+            if (!WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn2)) {
+                return JS_FALSE;
+            }
+        }
+        return JS_TRUE;
+      case PN_TERNARY:
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid1) &&
+            WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid2) &&
+            WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid3);
+      case PN_BINARY:
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_left) &&
+            WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_right);
+      case PN_UNARY:
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_kid);
+      case PN_NAME:
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_expr);
+      case PN_FUNC:
+        return WarnUndeclaredIdentifiers(cg, cx, ts, tc, pn->pn_body);
+      default:
+        return JS_TRUE;
+    }
+}
+
+static JSBool
+MarkDeclaredIdentifiers(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn)
+{
+    JSParseNode *pn2;
+
+    if (!pn)
+        return JS_TRUE;
+
+    if (pn->pn_type == TOK_NAME && (pn->pn_attrs & JSPROP_DECLARED) == 0) {
+        JSTreeContext *curtc;
+        JSAtomListElement *ale;
+
+        if (cx->lint->controlCommentsIgnore) {
+            /* nasty, but undeclared identifiers aren't warned against until end */
+            pn->pn_attrs |= JSPROP_DECLARED;
+        }
+        else {
+            curtc = tc;
+            while (curtc) {
+                ATOM_LIST_SEARCH(ale, &curtc->decls, pn->pn_atom);
+                if (ale && (ALE_JSOP(ale) == JSOP_DEFFUN || ALE_JSOP(ale) == JSOP_CLOSURE)) {
+                    /* variables should have been detected previously */
+                    pn->pn_attrs |= JSPROP_DECLARED;
+                    break;
+                }
+                curtc = curtc->down;
+            }
+        }
+    }
+
+    switch (pn->pn_arity) {
+      case PN_LIST:
+        for (pn2 = pn->pn_head; pn2; pn2 = pn2->pn_next) {
+            if (!MarkDeclaredIdentifiers(cx, ts, tc, pn2)) {
+                return JS_FALSE;
+            }
+        }
+        return JS_TRUE;
+      case PN_TERNARY:
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid1) &&
+            MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid2) &&
+            MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid3);
+      case PN_BINARY:
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_left) &&
+            MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_right);
+      case PN_UNARY:
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_kid);
+      case PN_NAME:
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_expr);
+      case PN_FUNC:
+        return MarkDeclaredIdentifiers(cx, ts, tc, pn->pn_body);
+      default:
+        return JS_TRUE;
+    }
+}
+
 /*
  * Compile a top-level script.
  */
@@ -419,6 +541,7 @@ js_CompileTokenStream(JSContext *cx, JSObject *chain, JSTokenStream *ts,
     uint32 flags;
     JSParseNode *pn;
     JSBool ok;
+
 #ifdef METER_PARSENODES
     void *sbrk(ptrdiff_t), *before = sbrk(0);
 #endif
@@ -474,6 +597,27 @@ js_CompileTokenStream(JSContext *cx, JSObject *chain, JSTokenStream *ts,
          */
         JS_ASSERT(cg->treeContext.flags & TCF_COMPILING);
         ok = JS_TRUE;
+    }
+
+    if (cx->lint) {
+        if (ok && cx->lint->controlCommentsIgnore &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_MISMATCH_CTRL_COMMENTS)) {
+            ok = JS_FALSE;
+        }
+        if (ok) {
+            if (cx->lint->optionExplicit) {
+                /* warn against undeclared identifiers */
+                if (!WarnUndeclaredIdentifiers(cg, cx, ts, &cg->treeContext, pn))
+                    ok = JS_FALSE;
+            }
+            else {
+                /* warn about missing "option explicit" */
+                if (!js_ReportCompileErrorNumber(cx, ts, cg, JSREPORT_WARNING, JSMSG_MISSING_OPTION_EXPLICIT))
+                    ok = JS_FALSE;
+            }
+        }
+
+        cx->lint->hasCompletedPartialScript = JS_TRUE;
     }
 
 #ifdef METER_PARSENODES
@@ -809,6 +953,7 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
     pn->pn_pos.begin = CURRENT_TOKEN(ts).pos.begin;
 
     TREE_CONTEXT_INIT(&funtc);
+    funtc.down = tc;
     body = FunctionBody(cx, ts, fun, &funtc);
     if (!body)
         return NULL;
@@ -871,6 +1016,13 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
             if (tc->topStmt && prevop == JSOP_DEFVAR)
                 tc->flags |= TCF_FUN_CLOSURE_VS_VAR;
         } else {
+            /* save global identifier for lint */
+            if (cx->lint && cx->lint->scriptIdentifiers && !tc->down) {
+                jsval val;
+                val = JSVAL_VOID;
+                if (!js_SetProperty(cx, cx->lint->scriptIdentifiers, (jsid)funAtom, &val))
+                    return NULL;
+            }
             ale = js_IndexAtom(cx, funAtom, &tc->decls);
             if (!ale)
                 return NULL;
@@ -956,6 +1108,11 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
     pn->pn_flags = funtc.flags & TCF_FUN_FLAGS;
     pn->pn_tryCount = funtc.tryCount;
     TREE_CONTEXT_FINISH(&funtc);
+
+    /* Flag declared identifiers before this goes out of scope */
+    if (cx->lint)
+        MarkDeclaredIdentifiers(cx, ts, &funtc, pn);
+
     return pn;
 }
 
@@ -1047,10 +1204,10 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     while ((tt = js_PeekToken(cx, ts)) > TOK_EOF && tt != TOK_RC) {
         if (beyondreach && !alreadywarnedunreachable) {
             alreadywarnedunreachable = JS_TRUE;
-            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
-                                             JSREPORT_WARNING |
-                                             JSREPORT_STRICT,
-                                             JSMSG_UNREACHABLE_CODE)) {
+            if (cx->lint && !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                         JSREPORT_WARNING |
+                                                         JSREPORT_STRICT,
+                                                         JSMSG_UNREACHABLE_CODE)) {
                 return NULL;
             }
         }
@@ -1062,8 +1219,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         if (!pn2)
             return NULL;
 
-        /*todo here */
-        if (!checkIncDec(pn2)) {
+        if (cx->lint && !checkIncDec(pn2)) {
             if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING |
                                          JSREPORT_STRICT,
@@ -1074,8 +1230,11 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
         ts->flags |= TSF_REGEXP;
 
-        /* If compiling top-level statements, emit as we go to save space. */
-        if (!tc->topStmt && (tc->flags & TCF_COMPILING)) {
+        /*
+         * If compiling top-level statements, emit as we go to save space,
+         * except when linting (so we can check for undeclared identifiers)
+         */
+        if (!tc->topStmt && (tc->flags & TCF_COMPILING) && !cx->lint) {
             if (cx->fp->fun &&
                 JS_HAS_STRICT_OPTION(cx) &&
                 (tc->flags & TCF_RETURN_EXPR)) {
@@ -1112,7 +1271,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         return NULL;
 
     /* empty catch is useful */
-    if (!hadtoken && (!tc->topStmt || tc->topStmt->type != STMT_CATCH)) {
+    if (cx->lint && !hadtoken && (!tc->topStmt || tc->topStmt->type != STMT_CATCH)) {
         if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING | JSREPORT_STRICT,
                                          JSMSG_EMPTY_STATEMENT)) {
@@ -1298,14 +1457,25 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     tt = js_GetToken(cx, ts);
     ts->flags &= ~TSF_REGEXP;
 
-    if (tt != TOK_LC && tc->topStmt) {
+    if (cx->lint && tt != TOK_LC && tc->topStmt &&
+        !(tc->topStmt->type == STMT_ELSE && tt == TOK_IF)/* allow else if statements */) {
         switch (tc->topStmt->type) {
-          case STMT_IF:
-          case STMT_ELSE:
-          case STMT_WITH:
+          case STMT_BLOCK:
+          case STMT_LABEL:
+          case STMT_SWITCH:
+          case STMT_SUBROUTINE:
+            /* ignore */
+            break;
+
           case STMT_TRY:
           case STMT_CATCH:
           case STMT_FINALLY:
+            /* syntax always requires curly */
+            break;
+
+          case STMT_IF:
+          case STMT_ELSE:
+          case STMT_WITH:
           case STMT_DO_LOOP:
           case STMT_FOR_LOOP:
           case STMT_FOR_IN_LOOP:
@@ -1476,7 +1646,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 return NULL;
             pn4->pn_type = TOK_LC;
             PN_INIT_LIST(pn4);
-            if (JS_TRUE/*scope*/) {
+            if (cx->lint) {
                 JSBool needsbreak;
                 needsbreak = (js_PeekToken(cx, ts) == TOK_RC);
 
@@ -1773,6 +1943,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                     return NULL;
             }
 #endif
+            pn3->pn_attrs |= JSPROP_DECLARED;
             pn2->pn_kid1 = pn3;
 
             MUST_MATCH_TOKEN(TOK_RP, JSMSG_PAREN_AFTER_CATCH);
@@ -1993,7 +2164,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         break;
 
       case TOK_LC:
-        if (tc->topStmt == NULL || tc->topStmt->type == STMT_BLOCK) {
+        if (cx->lint && (tc->topStmt == NULL || tc->topStmt->type == STMT_BLOCK)) {
             if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                              JSREPORT_WARNING |
                                              JSREPORT_STRICT,
@@ -2012,18 +2183,13 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
       case TOK_EOL:
       case TOK_SEMI:
-        if (tt != TOK_SEMI &&
+        if (cx->lint &&
            !js_ReportCompileErrorNumber(cx, ts, NULL,
-                                         JSREPORT_WARNING |
-                                         JSREPORT_STRICT,
-                                         JSMSG_MISSING_SEMICOLON)) {
-            return NULL;
-        }
-        else if (tt == TOK_SEMI &&
-            !js_ReportCompileErrorNumber(cx, ts, NULL,
-                                         JSREPORT_WARNING |
-                                         JSREPORT_STRICT,
-                                         JSMSG_EMPTY_STATEMENT)) {
+                                        JSREPORT_WARNING |
+                                        JSREPORT_STRICT,
+                                        tt == TOK_SEMI ?
+                                        JSMSG_EMPTY_STATEMENT :
+                                        JSMSG_MISSING_SEMICOLON)) {
             return NULL;
         }
 
@@ -2069,7 +2235,8 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             }
             (void) js_GetToken(cx, ts);
 
-            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+            if (cx->lint &&
+                !js_ReportCompileErrorNumber(cx, ts, NULL,
                                              JSREPORT_WARNING |
                                              JSREPORT_STRICT,
                                              JSMSG_USE_OF_LABEL)) {
@@ -2113,7 +2280,8 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     }
 
     if (!js_MatchToken(cx, ts, TOK_SEMI)) {
-        if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+        if (cx->lint &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING |
                                          JSREPORT_STRICT,
                                          JSMSG_MISSING_SEMICOLON)) {
@@ -2220,6 +2388,13 @@ Variables(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             if (pn->pn_op == JSOP_DEFVAR && prevop == JSOP_CLOSURE)
                 tc->flags |= TCF_FUN_CLOSURE_VS_VAR;
         } else {
+            /* save global identifier for lint */
+            if (cx->lint && cx->lint->scriptIdentifiers && !tc->down) {
+                jsval val;
+                val = JSVAL_VOID;
+                if (!js_SetProperty(cx, cx->lint->scriptIdentifiers, (jsid)atom, &val))
+                    return NULL;
+            }
             ale = js_IndexAtom(cx, atom, &tc->decls);
             if (!ale)
                 return NULL;
@@ -2237,6 +2412,7 @@ Variables(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                         ? JSPROP_ENUMERATE | JSPROP_PERMANENT |
                           JSPROP_READONLY
                         : JSPROP_ENUMERATE | JSPROP_PERMANENT;
+        pn2->pn_attrs |= JSPROP_DECLARED;
         PN_APPEND(pn, pn2);
 
         if (!OBJ_LOOKUP_PROPERTY(cx, obj, (jsid)atom, &pobj, &prop))
@@ -2367,7 +2543,8 @@ Expr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
     pn = AssignExpr(cx, ts, tc);
     if (pn && js_MatchToken(cx, ts, TOK_COMMA)) {
-        if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+        if (cx->lint &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING |
                                          JSREPORT_STRICT,
                                          JSMSG_COMMA_SEPARATED_STMTS)) {
@@ -2578,7 +2755,7 @@ EqExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         op = CURRENT_TOKEN(ts).t_op;
         pn = NewBinary(cx, TOK_EQOP, op, pn, RelExpr(cx, ts, tc), tc);
 
-        if (pn->pn_type == TOK_EQOP &&
+        if (cx->lint && pn->pn_type == TOK_EQOP &&
             pn->pn_op != JSOP_NEW_EQ && pn->pn_op != JSOP_NEW_NE &&
             (!AllowImplicitConversionOnCompare(cx, pn->pn_left) ||
             !AllowImplicitConversionOnCompare(cx, pn->pn_right))) {
@@ -2765,7 +2942,7 @@ UnaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
       case TOK_UNARYOP:
       case TOK_PLUS:
       case TOK_MINUS:
-        if (tt == TOK_UNARYOP && CURRENT_TOKEN(ts).t_op == JSOP_VOID &&
+        if (cx->lint && tt == TOK_UNARYOP && CURRENT_TOKEN(ts).t_op == JSOP_VOID &&
            !js_ReportCompileErrorNumber(cx, ts, NULL,
                                         JSREPORT_WARNING |
                                         JSREPORT_STRICT,
@@ -2838,8 +3015,8 @@ UnaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 pn2->pn_pos.begin = pn->pn_pos.begin;
                 pn = pn2;
 
-                if (((tt == TOK_INC && js_PeekToken(cx, ts) == TOK_PLUS) ||
-                    tt == TOK_DEC && js_PeekToken(cx, ts) == TOK_MINUS) &&
+                if (cx->lint && ((tt == TOK_INC && js_PeekToken(cx, ts) == TOK_PLUS) ||
+                    (tt == TOK_DEC && js_PeekToken(cx, ts) == TOK_MINUS)) &&
                     !js_ReportCompileErrorNumber(cx, ts, NULL,
                                                  JSREPORT_WARNING |
                                                  JSREPORT_STRICT,
@@ -2989,6 +3166,99 @@ MemberExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
     if (tt == TOK_ERROR)
         return NULL;
     return pn;
+}
+
+static JSBool
+MarkIfDefined(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn)
+{
+    JSAtomListElement *ale;
+    JSAtom *atom;
+    JSObject *obj, *pobj;
+    JSScopeProperty *sprop;
+    JSObject *scope;
+    JSTreeContext *curtc;
+    JSStackFrame *curframe;
+    JSStmtInfo *curstmt;
+
+    const char *name;
+    name = js_AtomToPrintableString(cx, pn->pn_atom);
+
+    atom = pn->pn_atom;
+    scope = cx->fp->scopeChain;
+
+    /* nasty, but undeclared identifiers aren't warned against until end */
+    if (cx->lint->controlCommentsIgnore)
+        goto success;
+
+    if (scope) {
+        /* Find the topmost object in the scope chain. */
+        do {
+            obj = scope;
+            scope = OBJ_GET_PARENT(cx, obj);
+        } while (scope);
+    } else {
+        obj = cx->globalObject;
+    }
+
+    if (obj && !OBJ_LOOKUP_PROPERTY(cx, obj, (jsid)atom, &pobj, (JSProperty**)&sprop))
+        return JS_FALSE;
+    if (pobj)
+        goto success;
+
+    curframe = cx->fp;
+    while (curframe) {
+        if (!OBJ_LOOKUP_PROPERTY(cx, curframe->varobj, (jsid)atom, &pobj, (JSProperty**)&sprop))
+            return JS_FALSE;
+        if (pobj)
+            goto success;
+        curframe = curframe->down;
+    }
+
+    curtc = tc;
+    while (curtc) {
+        ATOM_LIST_SEARCH(ale, &curtc->decls, atom);
+        if (ale)
+            goto success;
+        curtc = curtc->down;
+    }
+
+    curstmt = tc->topStmt;
+    while (curstmt) {
+        if (curstmt->label && curstmt->label == atom)
+            goto success;
+        curstmt = curstmt->down;
+    }
+
+    if (js_PeekToken(cx, ts) == TOK_COLON) {
+        /* assume that it's a label, which is actually a declaration */
+        goto success;
+    }
+
+    /* check for previous identifier */
+    if (cx->lint && cx->lint->scriptIdentifiers &&
+        !OBJ_LOOKUP_PROPERTY(cx, cx->lint->scriptIdentifiers, (jsid)atom, &pobj, (JSProperty**)&sprop)) {
+        return JS_FALSE;
+    }
+    if (pobj)
+        goto success;
+
+    if (cx->lint && cx->lint->dependencyList) {
+        JSLObjectList *cur = (JSLObjectList*)JS_LIST_HEAD(&cx->lint->dependencyList->links);
+        while (cur != cx->lint->dependencyList) {
+            /* look up property in dependency */
+            if (!OBJ_LOOKUP_PROPERTY(cx, cur->obj, (jsid)atom, &pobj, (JSProperty**)&sprop))
+                return JS_FALSE;
+            if (pobj)
+                goto success;
+            cur = (JSLObjectList*)JS_NEXT_LINK(&cur->links);
+        }
+    }
+
+    return JS_TRUE;
+
+success:
+    pn->pn_attrs |= JSPROP_DECLARED;
+    return JS_TRUE;
 }
 
 static JSParseNode *
@@ -3183,6 +3453,7 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 op = CURRENT_TOKEN(ts).t_op;
                 pn2 = NewBinary(cx, TOK_COLON, op, pn3, AssignExpr(cx, ts, tc),
                                 tc);
+                pn3->pn_attrs |= JSPROP_DECLARED;
 #if JS_HAS_GETTER_SETTER
               skip:
 #endif
@@ -3273,6 +3544,9 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 pn->pn_atom == cx->runtime->atomState.protoAtom) {
                 tc->flags |= TCF_FUN_HEAVYWEIGHT;
             }
+
+            if (cx->lint && !MarkIfDefined(cx, ts,tc, pn))
+                return NULL;
         }
         break;
 

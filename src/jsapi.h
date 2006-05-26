@@ -125,6 +125,7 @@ JS_BEGIN_EXTERN_C
                                            object that delegates to a prototype
                                            containing this property */
 #define JSPROP_INDEX            0x80    /* name is actually (jsint) index */
+#define JSPROP_DECLARED        0x160    /* name is declared */
 
 /* Function flags, set in JSFunctionSpec and passed to JS_NewFunction etc. */
 #define JSFUN_LAMBDA            0x08    /* expressed, not declared, function */
@@ -459,6 +460,13 @@ JS_GetGlobalObject(JSContext *cx);
 
 extern JS_PUBLIC_API(void)
 JS_SetGlobalObject(JSContext *cx, JSObject *obj);
+
+extern JS_PUBLIC_API(JSBool)
+JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
+                      JSLImportCallback importCallback, void *parms);
+
+extern JS_PUBLIC_API(void)
+JS_PopLintIdentifers(JSContext *cx);
 
 /*
  * Initialize standard JS class constructors, prototypes, and any top-level
