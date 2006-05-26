@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.2.3"
+#define JSL_VERSION "0.2.4"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -897,19 +897,28 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                       const char *path, const char *contents,
                       JSLImportCallback callback, void *callbackParms)
 {
+    const char utf8BOM[] = {'\xEF', '\xBB', '\xBF'};
     JSScript *script;
-    int lineno;
     JSBool isHTMLFile;
-    JSBool containsHTMLScript, containsHTMLStartTag, containsHTMLEndTag;
-    const char *contentsPos;
-    contentsPos = contents;
-
-    lineno = 1;
     isHTMLFile = JS_FALSE;
-    containsHTMLScript = containsHTMLStartTag = containsHTMLEndTag = JS_FALSE;
+
+    /* skip the UTF-8 BOM */
+    if (contents[0] == utf8BOM[0] &&
+        contents[1] == utf8BOM[1] &&
+        contents[2] == utf8BOM[2]) {
+        contents += 3;
+    }
 
     /* yech... */
     if (type == JSL_FILETYPE_UNKNOWN || type == JSL_FILETYPE_HTML) {
+        int lineno;
+        JSBool containsHTMLScript, containsHTMLStartTag, containsHTMLEndTag;
+        const char *contentsPos;
+        contentsPos = contents;
+
+        lineno = 1;
+        containsHTMLScript = containsHTMLStartTag = containsHTMLEndTag = JS_FALSE;
+
         while (*contentsPos) {
             COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
             if (!*contentsPos)
@@ -984,17 +993,17 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
             }
             else {
                 /* script tag */
-                JSBool selfContainedTag;
                 const char *startOfScript, *endOfScript;
                 int lineStartOfScript;
+                const char *scriptSrcStart, *scriptSrcEnd;
                 contentsPos += 6;
-
-                selfContainedTag = JS_FALSE;
 
                 /* find start of script */
                 lineStartOfScript = 0;
                 startOfScript = NULL;
                 endOfScript = NULL;
+                scriptSrcStart = NULL;
+                scriptSrcEnd = NULL;
                 while (*contentsPos) {
                     JSBool inSrcAttr;
                     inSrcAttr = JS_FALSE;
@@ -1021,6 +1030,12 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                             return JS_FALSE;
                         }
 
+                        if (scriptSrcStart) {
+                            OutputErrorMessage(path, lineno, 0, NULL, "html error", "only one src attribute is allowed");
+                            SetExitCode(EXITCODE_JS_ERROR);
+                            return JS_FALSE;
+                        }
+
                         /* skip spaces */
                         *contentsPos++;
                         COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
@@ -1032,9 +1047,10 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                             return JS_FALSE;
                         }
 
-                        inSrcAttr = JS_TRUE;
+                        /* src starts after quote */
+                        scriptSrcStart = contentsPos;
+                        scriptSrcStart++;
                     }
-
                     if (*contentsPos == '\"' || *contentsPos == '\'') {
                         const char *startPos;
                         startPos = contentsPos;
@@ -1051,42 +1067,17 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                             contentsPos++;
                         }
 
-                        if (inSrcAttr) {
-                            int attrLen;
-                            const char *err;
-
-                            attrLen = (contentsPos-1/*point to quote*/) - (startPos + 1/*quotes*/);
-                            err = NULL;
-
+                        if (scriptSrcStart && !scriptSrcEnd) {
                             if (!*contentsPos) {
-                                err = "unexpected end of file when looking for end of src attribute";
-                            }
-                            else if (attrLen > MAXPATHLEN) {
-                                err = "src attribute exceeded maximum length";
-                            }
-                            else {
-                                char srcAttr[MAXPATHLEN+1];
-                                strncpy(srcAttr, startPos + 1/*quote*/, attrLen);
-                                srcAttr[attrLen] = 0;
-
-                                if (callback)
-                                    callback(cx, srcAttr, callbackParms);
-                            }
-
-                            if (err) {
-                                OutputErrorMessage(path, lineno, 0, NULL, "html error", err);
+                                OutputErrorMessage(path, lineno, 0, NULL, "html error",
+                                    "unexpected end of file when looking for end of src attribute");
                                 SetExitCode(EXITCODE_JS_ERROR);
                                 return JS_FALSE;
                             }
+                            scriptSrcEnd = contentsPos-2/*point to before quote*/;
                         }
                         else if (!*contentsPos)
                             break;
-                    }
-                    else if (*contentsPos == '/' && *(contentsPos+1) == '>') {
-                        selfContainedTag = JS_TRUE;
-                        contentsPos++;
-                        contentsPos++;
-                        break;
                     }
                     else if (*contentsPos == '>') {
                         contentsPos++;
@@ -1097,6 +1088,8 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                     else
                         contentsPos++;
                 }
+                
+                /* look for the end of the script */
                 while (startOfScript && *contentsPos) {
                     const char *possibleEndOfScript;
                     possibleEndOfScript = NULL;
@@ -1130,20 +1123,45 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                         /* script end tag! */
                         contentsPos += 6;
 
-                        while (*contentsPos) {
+                        while (*contentsPos && *contentsPos != '>') {
                             COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
-                            if (*contentsPos == '>') {
-                                endOfScript = possibleEndOfScript;
-                                break;
-                            }
                             contentsPos++;
                         }
+                        if (!*contentsPos)
+                            break;
+
+                        if (*contentsPos == '>') {
+                            contentsPos++;
+
+                            /*
+                             * If no compilable unit can be found, the last end tag found will be
+                             * treated as the end of the script
+                            .*/
+                            endOfScript = possibleEndOfScript;
+
+                            if (JS_BufferIsCompilableUnit(cx, obj, startOfScript, possibleEndOfScript-startOfScript)) {
+                                /* this is a compilable unit; go for it */
+                                break;
+                            }
+                        }
                     }
-                    if (endOfScript)
-                        break;
+                }
+                    
+                if (scriptSrcStart && scriptSrcEnd) {
+                    const char *scriptPos;
+                    scriptPos = startOfScript;
+
+                    while (scriptPos < endOfScript) {
+                        if (!isspace(*scriptPos)) {
+                            OutputErrorMessage(path, lineno, 0, NULL, "html error", "script tag should be empty if a src attribute is specified");
+                            SetExitCode(EXITCODE_JS_ERROR);
+                            return JS_FALSE;
+                        }
+                        scriptPos++;
+                    }
                 }
 
-                if (!selfContainedTag && (!startOfScript || !endOfScript)) {
+                if (!startOfScript || !endOfScript) {
                     OutputErrorMessage(path, lineno, 0, NULL, "html error", "unable to find end of script tag");
                     SetExitCode(EXITCODE_JS_ERROR);
                     return JS_FALSE;
@@ -1151,7 +1169,25 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
 
                 isHTMLFile = JS_TRUE;
                 containsHTMLScript = JS_TRUE;
-                if (startOfScript != endOfScript) {
+
+                if (scriptSrcStart && scriptSrcEnd) {
+                    char srcAttr[MAXPATHLEN+1];
+                    int attrLen;
+                    attrLen = scriptSrcEnd-scriptSrcStart+1;
+
+                    if (attrLen > MAXPATHLEN) {
+                        OutputErrorMessage(path, lineno, 0, NULL, "html error", "src attribute exceeded maximum length");
+                        SetExitCode(EXITCODE_JS_ERROR);
+                        return JS_FALSE;
+                    }
+
+                    strncpy(srcAttr, scriptSrcStart, attrLen);
+                    srcAttr[attrLen] = 0;
+
+                    if (callback)
+                        callback(cx, srcAttr, callbackParms);
+                }
+                else {
                     script = JS_CompileScript(cx, obj, startOfScript, endOfScript - startOfScript, path, lineStartOfScript);
                     if (script)
                         JS_DestroyScript(cx, script);
@@ -1168,6 +1204,7 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
     /* if the type wasn't known, treat as JS if no hardcoded HTML tags were found */
     if ((type == JSL_FILETYPE_UNKNOWN && !isHTMLFile) ||
         type == JSL_FILETYPE_JS) {
+        const char *contentsPos;
         contentsPos = contents;
 
         /*
