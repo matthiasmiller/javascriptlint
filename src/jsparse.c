@@ -1139,7 +1139,7 @@ checkIncDec(JSParseNode *pn)
 
     if (pn->pn_type == TOK_FOR && pn->pn_arity == PN_BINARY &&
         pn->pn_left && pn->pn_left->pn_type == TOK_RESERVED && pn->pn_left->pn_arity == PN_TERNARY &&
-        (pn->pn_left->pn_kid3->pn_type == TOK_INC || pn->pn_left->pn_kid3->pn_type == TOK_DEC)) {
+        pn->pn_left->pn_kid3 && (pn->pn_left->pn_kid3->pn_type == TOK_INC || pn->pn_left->pn_kid3->pn_type == TOK_DEC)) {
         /* check the third statement in a for loop */
         return JS_TRUE;
     }

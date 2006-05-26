@@ -659,6 +659,9 @@ function IncDec() {
     for (i = 10; i > 0; i--) {
         s = i;
     }
+    for(i = 0; i < 5; ) {
+      i++;
+    }
 
     /* illegal */
     switch (i--)
