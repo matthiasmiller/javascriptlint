@@ -265,6 +265,8 @@ js_NewFileTokenStream(JSContext *cx, const char *filename, FILE *defaultfp)
 JS_FRIEND_API(JSBool)
 js_CloseTokenStream(JSContext *cx, JSTokenStream *ts)
 {
+    if (ts->flags & TSF_OWNFILENAME)
+        JS_free(cx, (void *) ts->filename);
     if (ts->principals)
         JSPRINCIPALS_DROP(cx, ts->principals);
     return !ts->file || fclose(ts->file) == 0;
@@ -738,6 +740,19 @@ GetUnicodeEscape(JSTokenStream *ts)
     return '\\';
 }
 
+static JSToken *
+NewToken(JSTokenStream *ts)
+{
+    JSToken *tp;
+
+    ts->cursor = (ts->cursor + 1) & NTOKENS_MASK;
+    tp = &CURRENT_TOKEN(ts);
+    tp->ptr = ts->linebuf.ptr - 1;
+    tp->pos.begin.index = ts->linepos + (tp->ptr - ts->linebuf.base);
+    tp->pos.begin.lineno = tp->pos.end.lineno = (uint16)ts->lineno;
+    return tp;
+}
+
 JSBool
 AllowNewlineBetweenTokens(JSToken *tp, JSTokenType tt)
 {
@@ -797,8 +812,8 @@ JSTokenType
 js_GetToken(JSContext *cx, JSTokenStream *ts)
 {
     JSTokenType tt;
+    int32 c, qc;
     JSToken *tp;
-    int32 c;
     JSAtom *atom;
     JSBool hadUnicodeEscape;
     JSBool hasLineBreak;
@@ -807,14 +822,21 @@ js_GetToken(JSContext *cx, JSTokenStream *ts)
     hasLineBreak = JS_FALSE;
     origtoken = &CURRENT_TOKEN(ts);
 
-#define INIT_TOKENBUF(tb)   ((tb)->ptr = (tb)->base)
-#define FINISH_TOKENBUF(tb) if (!AddToTokenBuf(cx, tb, 0)) RETURN(TOK_ERROR)
-#define TOKEN_LENGTH(tb)    ((tb)->ptr - (tb)->base - 1)
-#define RETURN(tt)          { if (tt == TOK_ERROR) ts->flags |= TSF_ERROR;    \
-                              tp->pos.end.index = ts->linepos +               \
-                                  (ts->linebuf.ptr - ts->linebuf.base) -      \
-                                  ts->ungetpos;                               \
-                              return (tp->type = tt); }
+#define INIT_TOKENBUF()     (ts->tokenbuf.ptr = ts->tokenbuf.base)
+#define TRIM_TOKENBUF(i)    (ts->tokenbuf.ptr = ts->tokenbuf.base + i)
+#define TOKENBUF_LENGTH()   (ts->tokenbuf.ptr - ts->tokenbuf.base)
+#define TOKENBUF_BASE()     (ts->tokenbuf.base)
+#define TOKENBUF_CHAR(i)    (ts->tokenbuf.base[i])
+#define TOKENBUF_TO_ATOM()  (js_AtomizeChars(cx,                              \
+                                             TOKENBUF_BASE(),                 \
+                                             TOKENBUF_LENGTH(),               \
+                                             0))
+
+#define ADD_TO_TOKENBUF(c)                                                    \
+    JS_BEGIN_MACRO                                                            \
+        if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))                     \
+            goto error;                                                       \
+    JS_END_MACRO
 
     /* If there was a fatal error, keep returning TOK_ERROR. */
     if (ts->flags & TSF_ERROR)
@@ -840,14 +862,12 @@ retry:
         }
     } while (JS_ISSPACE(c));
 
-    ts->cursor = (ts->cursor + 1) & NTOKENS_MASK;
-    tp = &CURRENT_TOKEN(ts);
-    tp->ptr = ts->linebuf.ptr - 1;
-    tp->pos.begin.index = ts->linepos + (tp->ptr - ts->linebuf.base);
-    tp->pos.begin.lineno = tp->pos.end.lineno = (uint16)ts->lineno;
+    tp = NewToken(ts);
+    if (c == EOF) {
+        tt = TOK_EOF;
+        goto out;
+    }
 
-    if (c == EOF)
-        RETURN(TOK_EOF);
     if (c != '-' && c != '\n')
         ts->flags |= TSF_DIRTYLINE;
 
@@ -856,10 +876,9 @@ retry:
         (c == '\\' &&
          (c = GetUnicodeEscape(ts),
           hadUnicodeEscape = JS_ISIDENT_START(c)))) {
-        INIT_TOKENBUF(&ts->tokenbuf);
+        INIT_TOKENBUF();
         for (;;) {
-            if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                RETURN(TOK_ERROR);
+            ADD_TO_TOKENBUF(c);
             c = GetChar(ts);
             if (c == '\\') {
                 c = GetUnicodeEscape(ts);
@@ -872,50 +891,46 @@ retry:
             }
         }
         UngetChar(ts, c);
-        FINISH_TOKENBUF(&ts->tokenbuf);
 
-        atom = js_AtomizeChars(cx,
-                               ts->tokenbuf.base,
-                               TOKEN_LENGTH(&ts->tokenbuf),
-                               0);
+        atom = TOKENBUF_TO_ATOM();
         if (!atom)
-            RETURN(TOK_ERROR);
+            goto error;
         if (!hadUnicodeEscape && ATOM_KEYWORD(atom)) {
             struct keyword *kw = ATOM_KEYWORD(atom);
 
             if (JSVERSION_IS_ECMA(cx->version) || kw->version <= cx->version) {
                 tp->t_op = (JSOp) kw->op;
-                RETURN(kw->tokentype);
+                tt = kw->tokentype;
+                goto out;
             }
         }
         tp->t_op = JSOP_NAME;
         tp->t_atom = atom;
-        RETURN(TOK_NAME);
+        tt = TOK_NAME;
+        goto out;
     }
 
-if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
+    if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
         jsint radix;
         const jschar *endptr;
         jsdouble dval;
 
         radix = 10;
-        INIT_TOKENBUF(&ts->tokenbuf);
+        INIT_TOKENBUF();
 
         if (cx->lint && c == '.' &&
             !js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING |
                                          JSREPORT_STRICT,
                                          JSMSG_LEADING_DECIMAL_POINT)) {
-            return(TOK_ERROR);
+            goto error;
         }
 
         if (c == '0') {
-            if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                RETURN(TOK_ERROR);
+            ADD_TO_TOKENBUF(c);
             c = GetChar(ts);
             if (JS_TOLOWER(c) == 'x') {
-                if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                    RETURN(TOK_ERROR);
+                ADD_TO_TOKENBUF(c);
                 c = GetChar(ts);
                 radix = 16;
             } else if (JS7_ISDEC(c)) {
@@ -926,7 +941,7 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
                                                  JSREPORT_WARNING |
                                                  JSREPORT_STRICT,
                                                  JSMSG_OCTAL_NUMBER)) {
-                    return(TOK_ERROR);
+                    goto error;
                 }
             }
         }
@@ -946,13 +961,12 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
                                                      JSREPORT_WARNING,
                                                      JSMSG_BAD_OCTAL,
                                                      c == '8' ? "08" : "09")) {
-                        RETURN(TOK_ERROR);
+                        goto error;
                     }
                     radix = 10;
                 }
             }
-            if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                RETURN(TOK_ERROR);
+            ADD_TO_TOKENBUF(c);
             c = GetChar(ts);
         }
 
@@ -960,8 +974,7 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
             if (c == '.') {
                 int digitsafterdecimal = -1;
                 do {
-                    if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                        RETURN(TOK_ERROR);
+                    ADD_TO_TOKENBUF(c);
                     digitsafterdecimal++;
                     c = GetChar(ts);
                 } while (JS7_ISDEC(c));
@@ -971,27 +984,24 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
                                                      JSREPORT_WARNING |
                                                      JSREPORT_STRICT,
                                                      JSMSG_TRAILING_DECIMAL_POINT)) {
-                        return(TOK_ERROR);
+                        goto error;
                     }
                 }
             }
             if (JS_TOLOWER(c) == 'e') {
-                if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                    RETURN(TOK_ERROR);
+                ADD_TO_TOKENBUF(c);
                 c = GetChar(ts);
                 if (c == '+' || c == '-') {
-                    if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                        RETURN(TOK_ERROR);
+                    ADD_TO_TOKENBUF(c);
                     c = GetChar(ts);
                 }
                 if (!JS7_ISDEC(c)) {
                     js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                                 JSMSG_MISSING_EXPONENT);
-                    RETURN(TOK_ERROR);
+                    goto error;
                 }
                 do {
-                    if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                        RETURN(TOK_ERROR);
+                    ADD_TO_TOKENBUF(c);
                     c = GetChar(ts);
                 } while (JS7_ISDEC(c));
             }
@@ -1002,40 +1012,41 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
                                             JSREPORT_WARNING |
                                             JSREPORT_STRICT,
                                             JSMSG_TRAILING_DECIMAL_POINT)) {
-                return(TOK_ERROR);
+                goto error;
             }
         }
 
+        /* Put back the next char and NUL-terminate tokenbuf for js_strto*. */
         UngetChar(ts, c);
-        FINISH_TOKENBUF(&ts->tokenbuf);
+        ADD_TO_TOKENBUF(0);
 
         if (radix == 10) {
-            if (!js_strtod(cx, ts->tokenbuf.base, &endptr, &dval)) {
+            if (!js_strtod(cx, TOKENBUF_BASE(), &endptr, &dval)) {
                 js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                             JSMSG_OUT_OF_MEMORY);
-                RETURN(TOK_ERROR);
+                goto error;
             }
         } else {
-            if (!js_strtointeger(cx, ts->tokenbuf.base, &endptr, radix, &dval)) {
+            if (!js_strtointeger(cx, TOKENBUF_BASE(), &endptr, radix, &dval)) {
                 js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                             JSMSG_OUT_OF_MEMORY);
-                RETURN(TOK_ERROR);
+                goto error;
             }
         }
         tp->t_dval = dval;
-        RETURN(TOK_NUMBER);
+        tt = TOK_NUMBER;
+        goto out;
     }
 
     if (c == '"' || c == '\'') {
-        int32 val, qc = c;
-
-        INIT_TOKENBUF(&ts->tokenbuf);
+        qc = c;
+        INIT_TOKENBUF();
         while ((c = GetChar(ts)) != qc) {
             if (c == '\n' || c == EOF) {
                 UngetChar(ts, c);
                 js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                             JSMSG_UNTERMINATED_STRING);
-                RETURN(TOK_ERROR);
+                goto error;
             }
             if (c == '\\') {
                 switch (c = GetChar(ts)) {
@@ -1048,7 +1059,8 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
 
                   default:
                     if ('0' <= c && c < '8') {
-                        val = JS7_UNDEC(c);
+                        int32 val = JS7_UNDEC(c);
+
                         c = PeekChar(ts);
                         if ('0' <= c && c < '8') {
                             val = 8 * val + JS7_UNDEC(c);
@@ -1063,6 +1075,7 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
                                     val = save;
                             }
                         }
+
                         c = (jschar)val;
                     } else if (c == 'u') {
                         jschar cp[4];
@@ -1089,37 +1102,36 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
                     break;
                 }
             }
-            if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                RETURN(TOK_ERROR);
+            ADD_TO_TOKENBUF(c);
         }
-        FINISH_TOKENBUF(&ts->tokenbuf);
-        atom = js_AtomizeChars(cx,
-                               ts->tokenbuf.base,
-                               TOKEN_LENGTH(&ts->tokenbuf),
-                               0);
+        atom = TOKENBUF_TO_ATOM();
         if (!atom)
-            RETURN(TOK_ERROR);
+            goto error;
         tp->pos.end.lineno = (uint16)ts->lineno;
         tp->t_op = JSOP_STRING;
         tp->t_atom = atom;
-        RETURN(TOK_STRING);
+        tt = TOK_STRING;
+        goto out;
     }
 
     switch (c) {
       case '\n':
-        c = TOK_EOL;
+        tt = TOK_EOL;
         break;
 
-      case ';': c = TOK_SEMI; break;
-      case '.': c = TOK_DOT; break;
-      case '[': c = TOK_LB; break;
-      case ']': c = TOK_RB; break;
-      case '{': c = TOK_LC; break;
-      case '}': c = TOK_RC; break;
-      case '(': c = TOK_LP; break;
-      case ')': c = TOK_RP; break;
-      case ',': c = TOK_COMMA; break;
-      case '?': c = TOK_HOOK; break;
+      case ';': tt = TOK_SEMI; break;
+      case '[': tt = TOK_LB; break;
+      case ']': tt = TOK_RB; break;
+      case '{': tt = TOK_LC; break;
+      case '}': tt = TOK_RC; break;
+      case '(': tt = TOK_LP; break;
+      case ')': tt = TOK_RP; break;
+      case ',': tt = TOK_COMMA; break;
+      case '?': tt = TOK_HOOK; break;
+
+      case '.':
+        tt = TOK_DOT;
+        break;
 
       case ':':
         /*
@@ -1127,37 +1139,37 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
          * object initializer, likewise for setter.
          */
         tp->t_op = JSOP_NOP;
-        c = TOK_COLON;
+        tt = TOK_COLON;
         break;
 
       case '|':
         if (MatchChar(ts, c)) {
-            c = TOK_OR;
+            tt = TOK_OR;
         } else if (MatchChar(ts, '=')) {
             tp->t_op = JSOP_BITOR;
-            c = TOK_ASSIGN;
+            tt = TOK_ASSIGN;
         } else {
-            c = TOK_BITOR;
+            tt = TOK_BITOR;
         }
         break;
 
       case '^':
         if (MatchChar(ts, '=')) {
             tp->t_op = JSOP_BITXOR;
-            c = TOK_ASSIGN;
+            tt = TOK_ASSIGN;
         } else {
-            c = TOK_BITXOR;
+            tt = TOK_BITXOR;
         }
         break;
 
       case '&':
         if (MatchChar(ts, c)) {
-            c = TOK_AND;
+            tt = TOK_AND;
         } else if (MatchChar(ts, '=')) {
             tp->t_op = JSOP_BITAND;
-            c = TOK_ASSIGN;
+            tt = TOK_ASSIGN;
         } else {
-            c = TOK_BITAND;
+            tt = TOK_BITAND;
         }
         break;
 
@@ -1168,10 +1180,10 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
 #else
             tp->t_op = cx->jsop_eq;
 #endif
-            c = TOK_EQOP;
+            tt = TOK_EQOP;
         } else {
             tp->t_op = JSOP_NOP;
-            c = TOK_ASSIGN;
+            tt = TOK_ASSIGN;
         }
         break;
 
@@ -1182,10 +1194,10 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
 #else
             tp->t_op = cx->jsop_ne;
 #endif
-            c = TOK_EQOP;
+            tt = TOK_EQOP;
         } else {
             tp->t_op = JSOP_NOT;
-            c = TOK_UNARYOP;
+            tt = TOK_UNARYOP;
         }
         break;
 
@@ -1201,33 +1213,99 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
         }
         if (MatchChar(ts, c)) {
             tp->t_op = JSOP_LSH;
-            c = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_SHOP;
+            tt = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_SHOP;
         } else {
             tp->t_op = MatchChar(ts, '=') ? JSOP_LE : JSOP_LT;
-            c = TOK_RELOP;
+            tt = TOK_RELOP;
         }
         break;
 
       case '>':
         if (MatchChar(ts, c)) {
             tp->t_op = MatchChar(ts, c) ? JSOP_URSH : JSOP_RSH;
-            c = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_SHOP;
+            tt = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_SHOP;
         } else {
             tp->t_op = MatchChar(ts, '=') ? JSOP_GE : JSOP_GT;
-            c = TOK_RELOP;
+            tt = TOK_RELOP;
         }
         break;
 
       case '*':
         tp->t_op = JSOP_MUL;
-        c = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_STAR;
+        tt = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_STAR;
         break;
 
       case '/':
         if (MatchChar(ts, '/')) {
+            /*
+             * Hack for source filters such as the Mozilla XUL preprocessor:
+             * "//@line 123\n" sets the number of the *next* line after the
+             * comment to 123.
+             */
+            if (JS_HAS_ATLINE_OPTION(cx)) {
+                jschar cp[5];
+                uintN i, line, temp;
+                char filename[1024];
+
+                if (PeekChars(ts, 5, cp) &&
+                    cp[0] == '@' &&
+                    cp[1] == 'l' &&
+                    cp[2] == 'i' &&
+                    cp[3] == 'n' &&
+                    cp[4] == 'e') {
+                    SkipChars(ts, 5);
+                    while ((c = GetChar(ts)) != '\n' && JS_ISSPACE(c))
+                        continue;
+                    if (JS7_ISDEC(c)) {
+                        line = JS7_UNDEC(c);
+                        while ((c = GetChar(ts)) != EOF && JS7_ISDEC(c)) {
+                            temp = 10 * line + JS7_UNDEC(c);
+                            if (temp < line) {
+                                /* Ignore overlarge line numbers. */
+                                goto skipline;
+                            }
+                            line = temp;
+                        }
+                        while (c != '\n' && JS_ISSPACE(c))
+                            c = GetChar(ts);
+                        i = 0;
+                        if (c == '"') {
+                            while ((c = GetChar(ts)) != EOF && c != '"') {
+                                if (c == '\n') {
+                                    UngetChar(ts, c);
+                                    goto skipline;
+                                }
+                                if ((c >> 8) != 0 || i >= sizeof filename - 1)
+                                    goto skipline;
+                                filename[i++] = (char) c;
+                            }
+                            if (c == '"') {
+                                while ((c = GetChar(ts)) != '\n' &&
+                                       JS_ISSPACE(c)) {
+                                    continue;
+                                }
+                            }
+                        }
+                        filename[i] = '\0';
+                        if (c == '\n') {
+                            if (i > 0) {
+                                if (ts->flags & TSF_OWNFILENAME)
+                                    JS_free(cx, (void *) ts->filename);
+                                ts->filename = JS_strdup(cx, filename);
+                                if (!ts->filename)
+                                    goto error;
+                                ts->flags |= TSF_OWNFILENAME;
+                            }
+                            ts->lineno = line;
+                        }
+                    }
+                    UngetChar(ts, c);
+                }
+            }
+
 skipline:
             while ((c = GetChar(ts)) != EOF && c != '\n')
-                /* skip to end of line */;
+                continue;
             UngetChar(ts, c);
             goto retry;
         }
@@ -1262,7 +1340,7 @@ skipline:
                                                      JSREPORT_WARNING |
                                                      JSREPORT_STRICT,
                                                      JSMSG_NESTED_COMMENT)) {
-                        RETURN(TOK_ERROR);
+                        goto error;
                     }
 
                     /* try to advance control comment */
@@ -1294,7 +1372,7 @@ skipline:
                     (startedControlComment && !endedControlComment)) {
                     /* looks like a control comment */
                     if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_CONTROL_COMMENT))
-                        RETURN(TOK_ERROR);
+                        goto error;
                 }
                 else if (JSL_MATCHED_COMMENT(controlCommentIgnore)) {
                     /* check nesting */
@@ -1302,7 +1380,7 @@ skipline:
                         !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
                                                      JSMSG_MISMATCH_CTRL_COMMENTS))
                     {
-                        RETURN(TOK_ERROR);
+                        goto error;
                     }
                     cx->lint->controlCommentsIgnore = JS_TRUE;
                 }
@@ -1311,7 +1389,7 @@ skipline:
                     if (!cx->lint->controlCommentsIgnore &&
                         !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
                                                      JSMSG_MISMATCH_CTRL_COMMENTS)) {
-                        RETURN(TOK_ERROR);
+                        goto error;
                     }
                     cx->lint->controlCommentsIgnore = JS_FALSE;
                 }
@@ -1319,12 +1397,12 @@ skipline:
                     if (cx->lint->controlCommentsOptionExplicit) {
                         /* warn about duplicates */
                         if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_DUP_OPTION_EXPLICIT))
-                            RETURN(TOK_ERROR);
+                            goto error;
                     }
                     else if (cx->lint->hasCompletedPartialScript) {
                         /* warn about partial script that was missed */
                         if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_PARTIAL_OPTION_EXPLICIT))
-                            RETURN(TOK_ERROR);
+                            goto error;
                     }
                     else {
                         cx->lint->controlCommentsOptionExplicit = JS_TRUE;
@@ -1334,7 +1412,7 @@ skipline:
                     if (cx->lint->controlCommentsAllowFallthru && !cx->lint->controlCommentsHadFallthru)
                         cx->lint->controlCommentsHadFallthru = JS_TRUE;
                     else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU))
-                        RETURN(TOK_ERROR);
+                        goto error;
                 }
                 else if (JSL_MATCHED_COMMENT(controlCommentImport)) {
                     if (importPathPos > importPath) {
@@ -1359,51 +1437,48 @@ skipline:
                         }
                         else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
                                                              JSMSG_MISMATCH_CTRL_COMMENTS)) {
-                            RETURN(TOK_ERROR);
+                            goto error;
                         }
                     }
                     else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
                                                          JSMSG_MISMATCH_CTRL_COMMENTS)) {
-                        RETURN(TOK_ERROR);
+                        goto error;
                     }
                 }
                 else if (startedControlComment && endedControlComment) {
                     /* looked like a control comment */
                     if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_CONTROL_COMMENT))
-                        RETURN(TOK_ERROR);
+                        goto error;
                 }
             }
 
             if (c == EOF) {
                 js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                             JSMSG_UNTERMINATED_COMMENT);
-                RETURN(TOK_ERROR);
+                goto error;
             }
             goto retry;
         }
 
 #if JS_HAS_REGEXPS
-        if (ts->flags & TSF_REGEXP) {
+        if (ts->flags & TSF_OPERAND) {
             JSObject *obj;
             uintN flags;
 
-            INIT_TOKENBUF(&ts->tokenbuf);
+            INIT_TOKENBUF();
             while ((c = GetChar(ts)) != '/') {
                 if (c == '\n' || c == EOF) {
                     UngetChar(ts, c);
                     js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                                 JSMSG_UNTERMINATED_REGEXP);
-                    RETURN(TOK_ERROR);
+                    goto error;
                 }
                 if (c == '\\') {
-                    if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                        RETURN(TOK_ERROR);
+                    ADD_TO_TOKENBUF(c);
                     c = GetChar(ts);
                 }
-                if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
-                    RETURN(TOK_ERROR);
+                ADD_TO_TOKENBUF(c);
             }
-            FINISH_TOKENBUF(&ts->tokenbuf);
             for (flags = 0; ; ) {
                 if (MatchChar(ts, 'g'))
                     flags |= JSREG_GLOB;
@@ -1420,17 +1495,17 @@ skipline:
                 js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                             JSMSG_BAD_REGEXP_FLAG);
                 (void) GetChar(ts);
-                RETURN(TOK_ERROR);
+                goto error;
             }
             obj = js_NewRegExpObject(cx, ts,
-                                     ts->tokenbuf.base,
-                                     TOKEN_LENGTH(&ts->tokenbuf),
+                                     TOKENBUF_BASE(),
+                                     TOKENBUF_LENGTH(),
                                      flags);
             if (!obj)
-                RETURN(TOK_ERROR);
+                goto error;
             atom = js_AtomizeObject(cx, obj, 0);
             if (!atom)
-                RETURN(TOK_ERROR);
+                goto error;
 
             if (cx->lint && (!origtoken || (origtoken->type != TOK_COMMA &&
                 (origtoken->type != TOK_ASSIGN || origtoken->t_op != JSOP_NOP) &&
@@ -1440,53 +1515,63 @@ skipline:
                                                  JSREPORT_WARNING |
                                                  JSREPORT_STRICT,
                                                  JSMSG_MISPLACED_REGEX)) {
-                    RETURN(TOK_ERROR);
+                    goto error;
                 }
             }
 
-            tp->t_op = JSOP_OBJECT;
+            /*
+             * If the regexp's script is one-shot, we can avoid the extra
+             * fork-on-exec costs of JSOP_REGEXP by selecting JSOP_OBJECT.
+             * Otherwise, to avoid incorrect proto, parent, and lastIndex
+             * sharing among threads and sequentially across re-execution,
+             * select JSOP_REGEXP.
+             */
+            tp->t_op = (cx->fp->flags & (JSFRAME_EVAL | JSFRAME_COMPILE_N_GO))
+                       ? JSOP_OBJECT
+                       : JSOP_REGEXP;
             tp->t_atom = atom;
-            RETURN(TOK_OBJECT);
+            tt = TOK_OBJECT;
+            break;
         }
 #endif /* JS_HAS_REGEXPS */
 
         tp->t_op = JSOP_DIV;
-        c = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_DIVOP;
+        tt = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_DIVOP;
         break;
 
       case '%':
         tp->t_op = JSOP_MOD;
-        c = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_DIVOP;
+        tt = MatchChar(ts, '=') ? TOK_ASSIGN : TOK_DIVOP;
         break;
 
       case '~':
         tp->t_op = JSOP_BITNOT;
-        c = TOK_UNARYOP;
+        tt = TOK_UNARYOP;
         break;
 
       case '+':
         if (MatchChar(ts, '=')) {
             tp->t_op = JSOP_ADD;
-            c = TOK_ASSIGN;
+            tt = TOK_ASSIGN;
         } else if (MatchChar(ts, c)) {
-            c = TOK_INC;
+            tt = TOK_INC;
         } else {
             tp->t_op = JSOP_POS;
-            c = TOK_PLUS;
+            tt = TOK_PLUS;
         }
         break;
 
       case '-':
         if (MatchChar(ts, '=')) {
             tp->t_op = JSOP_SUB;
-            c = TOK_ASSIGN;
+            tt = TOK_ASSIGN;
         } else if (MatchChar(ts, c)) {
             if (PeekChar(ts) == '>' && !(ts->flags & TSF_DIRTYLINE))
                 goto skipline;
-            c = TOK_DEC;
+            tt = TOK_DEC;
         } else {
             tp->t_op = JSOP_NEG;
-            c = TOK_MINUS;
+            tt = TOK_MINUS;
         }
         ts->flags |= TSF_DIRTYLINE;
         break;
@@ -1510,7 +1595,7 @@ skipline:
             if (n >= ATOM_INDEX_LIMIT) {
                 js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                             JSMSG_SHARPVAR_TOO_BIG);
-                RETURN(TOK_ERROR);
+                goto error;
             }
         }
         tp->t_dval = (jsdouble) n;
@@ -1523,14 +1608,16 @@ skipline:
                                              JSREPORT_STRICT,
                                              JSMSG_DEPRECATED_USAGE,
                                              buf)) {
-                RETURN(TOK_ERROR);
+                goto error;
             }
         }
         if (c == '=')
-            RETURN(TOK_DEFSHARP);
-        if (c == '#')
-            RETURN(TOK_USESHARP);
-        goto badchar;
+            tt = TOK_DEFSHARP;
+        else if (c == '#')
+            tt = TOK_USESHARP;
+        else
+            goto badchar;
+        break;
       }
 
       badchar:
@@ -1539,27 +1626,40 @@ skipline:
       default:
         js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                     JSMSG_ILLEGAL_CHARACTER);
-        RETURN(TOK_ERROR);
+        goto error;
     }
 
     /* check tokens on end of line */
     if (cx->lint && hasLineBreak && origtoken &&
-        !AllowNewlineBetweenTokens(origtoken, (JSTokenType)c)) {
+        !AllowNewlineBetweenTokens(origtoken, tt)) {
         if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING |
                                          JSREPORT_STRICT,
                                          JSMSG_AMBIGUOUS_NEWLINE)) {
-            return(TOK_ERROR);
+            goto error;
         }
     }
 
-    JS_ASSERT(c < TOK_LIMIT);
-    RETURN((JSTokenType)c);
+out:
+    JS_ASSERT(tt < TOK_LIMIT);
+    tp->pos.end.index = ts->linepos +
+                        (ts->linebuf.ptr - ts->linebuf.base) -
+                        ts->ungetpos;
+    tp->type = tt;
+    return tt;
+
+error:
+    tt = TOK_ERROR;
+    ts->flags |= TSF_ERROR;
+    goto out;
 
 #undef INIT_TOKENBUF
-#undef FINISH_TOKENBUF
-#undef TOKEN_LENGTH
-#undef RETURN
+#undef TRIM_TOKENBUF
+#undef TOKENBUF_LENGTH
+#undef TOKENBUF_BASE
+#undef TOKENBUF_CHAR
+#undef TOKENBUF_TO_ATOM
+#undef ADD_TO_TOKENBUF
 }
 
 void
