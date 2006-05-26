@@ -973,6 +973,53 @@ FunctionExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 }
 #endif
 
+static JSBool
+checkIncDec(JSParseNode *pn)
+{
+    JSParseNode *pn2;
+
+    if (!pn)
+        return JS_TRUE;
+
+    if (pn->pn_type == TOK_FOR && pn->pn_arity == PN_BINARY &&
+        pn->pn_left && pn->pn_left->pn_type == TOK_RESERVED && pn->pn_left->pn_arity == PN_TERNARY &&
+        (pn->pn_left->pn_kid3->pn_type == TOK_INC || pn->pn_left->pn_kid3->pn_type == TOK_DEC)) {
+        /* check the third statement in a for loop */
+        return JS_TRUE;
+    }
+    else if (pn->pn_type == TOK_SEMI && pn->pn_arity == PN_UNARY && pn->pn_kid &&
+        pn->pn_kid->pn_arity == PN_UNARY &&
+        (pn->pn_kid->pn_type == TOK_INC || pn->pn_kid->pn_type == TOK_DEC)) {
+        /* check simple expressions */
+        return JS_TRUE;
+    }
+    else if (pn->pn_type == TOK_INC || pn->pn_type == TOK_DEC) {
+        /* disallow all other uses */
+        return JS_FALSE;
+    }
+
+    switch (pn->pn_arity) {
+      case PN_LIST:
+        for (pn2 = pn->pn_head; pn2; pn2 = pn2->pn_next) {
+            if (!checkIncDec(pn2))
+                return JS_FALSE;
+        }
+        return JS_TRUE;
+      case PN_TERNARY:
+        return checkIncDec(pn->pn_kid1) &&
+               checkIncDec(pn->pn_kid2) &&
+               checkIncDec(pn->pn_kid3);
+      case PN_BINARY:
+        return checkIncDec(pn->pn_left) && checkIncDec(pn->pn_right);
+      case PN_UNARY:
+        return checkIncDec(pn->pn_kid);
+      case PN_NAME:
+        return checkIncDec(pn->pn_expr);
+      default:
+        return JS_TRUE;
+    }
+}
+
 /*
  * Parse the statements in a block, creating a TOK_LC node that lists the
  * statements' trees.  If called from block-parsing code, the caller must
@@ -983,6 +1030,8 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 {
     JSParseNode *pn, *pn2;
     JSTokenType tt;
+    JSBool hadtoken;
+    JSBool beyondreach, alreadywarnedunreachable;
 
     CHECK_RECURSION();
 
@@ -992,11 +1041,37 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     PN_INIT_LIST(pn);
 
     ts->flags |= TSF_REGEXP;
+    hadtoken = JS_FALSE;
+    beyondreach = JS_FALSE;
+    alreadywarnedunreachable = JS_FALSE;
     while ((tt = js_PeekToken(cx, ts)) > TOK_EOF && tt != TOK_RC) {
+        if (beyondreach && !alreadywarnedunreachable) {
+            alreadywarnedunreachable = JS_TRUE;
+            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                             JSREPORT_WARNING |
+                                             JSREPORT_STRICT,
+                                             JSMSG_UNREACHABLE_CODE)) {
+                return NULL;
+            }
+        }
+
+        hadtoken = JS_TRUE;
+        beyondreach = (beyondreach || tt == TOK_BREAK || tt == TOK_CONTINUE || tt == TOK_RETURN || tt == TOK_THROW);
         ts->flags &= ~TSF_REGEXP;
         pn2 = Statement(cx, ts, tc);
         if (!pn2)
             return NULL;
+
+        /*todo here */
+        if (!checkIncDec(pn2)) {
+            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING |
+                                         JSREPORT_STRICT,
+                                         JSMSG_INC_DEC_WITHIN_STMT)) {
+                return NULL;
+            }
+        }
+
         ts->flags |= TSF_REGEXP;
 
         /* If compiling top-level statements, emit as we go to save space. */
@@ -1035,6 +1110,15 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     ts->flags &= ~TSF_REGEXP;
     if (tt == TOK_ERROR)
         return NULL;
+
+    /* empty catch is useful */
+    if (!hadtoken && (!tc->topStmt || tc->topStmt->type != STMT_CATCH)) {
+        if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING | JSREPORT_STRICT,
+                                         JSMSG_EMPTY_STATEMENT)) {
+            return NULL;
+        }
+    }
 
     pn->pn_pos.end = CURRENT_TOKEN(ts).pos.end;
     return pn;
@@ -1214,6 +1298,27 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     tt = js_GetToken(cx, ts);
     ts->flags &= ~TSF_REGEXP;
 
+    if (tt != TOK_LC && tc->topStmt) {
+        switch (tc->topStmt->type) {
+          case STMT_IF:
+          case STMT_ELSE:
+          case STMT_WITH:
+          case STMT_TRY:
+          case STMT_CATCH:
+          case STMT_FINALLY:
+          case STMT_DO_LOOP:
+          case STMT_FOR_LOOP:
+          case STMT_FOR_IN_LOOP:
+          case STMT_WHILE_LOOP:
+            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                             JSREPORT_WARNING |
+                                             JSREPORT_STRICT,
+                                             JSMSG_BLOCK_WITHOUT_BRACES)) {
+               return NULL;
+            }
+        }
+    }
+
 #if JS_HAS_GETTER_SETTER
     if (tt == TOK_NAME) {
         tt = CheckGetterOrSetter(cx, ts, TOK_FUNCTION);
@@ -1258,7 +1363,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             return NULL;
         PN_INIT_LIST(pn);
         do {
-            pn2 = ImportExpr(cx, ts, tc);
+                pn2 = ImportExpr(cx, ts, tc);
             if (!pn2)
                 return NULL;
             PN_APPEND(pn, pn2);
@@ -1371,15 +1476,31 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 return NULL;
             pn4->pn_type = TOK_LC;
             PN_INIT_LIST(pn4);
-            while ((tt = js_PeekToken(cx, ts)) != TOK_RC &&
-                   tt != TOK_CASE && tt != TOK_DEFAULT) {
-                if (tt == TOK_ERROR)
-                    return NULL;
-                pn5 = Statement(cx, ts, tc);
-                if (!pn5)
-                    return NULL;
-                pn4->pn_pos.end = pn5->pn_pos.end;
-                PN_APPEND(pn4, pn5);
+            if (JS_TRUE/*scope*/) {
+                JSBool needsbreak;
+                needsbreak = (js_PeekToken(cx, ts) == TOK_RC);
+
+                while ((tt = js_PeekToken(cx, ts)) != TOK_RC &&
+                       tt != TOK_CASE && tt != TOK_DEFAULT) {
+                    if (tt == TOK_ERROR)
+                        return NULL;
+                    pn5 = Statement(cx, ts, tc);
+                    if (!pn5)
+                        return NULL;
+                    pn4->pn_pos.end = pn5->pn_pos.end;
+                    PN_APPEND(pn4, pn5);
+                    /* will report missing break in unreachable code */
+                    needsbreak = (tt != TOK_BREAK && tt != TOK_RETURN && tt != TOK_THROW);
+                }
+
+                if (needsbreak) {
+                    if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                     JSREPORT_WARNING |
+                                                     JSREPORT_STRICT,
+                                                     JSMSG_MISSING_BREAK)) {
+                        return NULL;
+                    }
+                }
             }
 
             /* Fix the PN_LIST so it doesn't begin at the TOK_COLON. */
@@ -1872,6 +1993,14 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         break;
 
       case TOK_LC:
+        if (tc->topStmt == NULL || tc->topStmt->type == STMT_BLOCK) {
+            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                             JSREPORT_WARNING |
+                                             JSREPORT_STRICT,
+                                             JSMSG_MEANINGLESS_BLOCK)) {
+                return NULL;
+            }
+        }
         js_PushStatement(tc, &stmtInfo, STMT_BLOCK, -1);
         pn = Statements(cx, ts, tc);
         if (!pn)
@@ -1883,6 +2012,21 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
       case TOK_EOL:
       case TOK_SEMI:
+        if (tt != TOK_SEMI &&
+           !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING |
+                                         JSREPORT_STRICT,
+                                         JSMSG_MISSING_SEMICOLON)) {
+            return NULL;
+        }
+        else if (tt == TOK_SEMI &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING |
+                                         JSREPORT_STRICT,
+                                         JSMSG_EMPTY_STATEMENT)) {
+            return NULL;
+        }
+
         pn = NewParseNode(cx, &CURRENT_TOKEN(ts), PN_UNARY, tc);
         if (!pn)
             return NULL;
@@ -1925,6 +2069,13 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             }
             (void) js_GetToken(cx, ts);
 
+            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                             JSREPORT_WARNING |
+                                             JSREPORT_STRICT,
+                                             JSMSG_USE_OF_LABEL)) {
+                return NULL;
+            }
+
             /* Push a label struct and parse the statement. */
             js_PushStatement(tc, &stmtInfo, STMT_LABEL, -1);
             stmtInfo.label = label;
@@ -1961,7 +2112,14 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         }
     }
 
-    (void) js_MatchToken(cx, ts, TOK_SEMI);
+    if (!js_MatchToken(cx, ts, TOK_SEMI)) {
+        if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING |
+                                         JSREPORT_STRICT,
+                                         JSMSG_MISSING_SEMICOLON)) {
+            return NULL;
+        }
+    }
     return pn;
 }
 
@@ -2209,6 +2367,13 @@ Expr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
     pn = AssignExpr(cx, ts, tc);
     if (pn && js_MatchToken(cx, ts, TOK_COMMA)) {
+        if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING |
+                                         JSREPORT_STRICT,
+                                         JSMSG_COMMA_SEPARATED_STMTS)) {
+            return NULL;
+        }
+
         pn2 = NewParseNode(cx, &CURRENT_TOKEN(ts), PN_LIST, tc);
         if (!pn2)
             return NULL;
@@ -2383,6 +2548,25 @@ BitAndExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     return pn;
 }
 
+static JSBool
+AllowImplicitConversionOnCompare(JSContext *cx, JSParseNode *pn)
+{
+    if (pn->pn_type == TOK_PRIMARY && pn->pn_op == JSOP_NULL) {
+        return JS_FALSE;
+    }
+
+    if (pn->pn_type == TOK_STRING && pn->pn_op == JSOP_STRING &&
+        JSSTRING_LENGTH(ATOM_TO_STRING(pn->pn_atom)) == 0) {
+        return JS_FALSE;
+    }
+
+    if (pn->pn_type == TOK_NUMBER && pn->pn_dval == 0) {
+        return JS_FALSE;
+    }
+
+    return JS_TRUE;
+}
+
 static JSParseNode *
 EqExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 {
@@ -2393,6 +2577,19 @@ EqExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     while (pn && js_MatchToken(cx, ts, TOK_EQOP)) {
         op = CURRENT_TOKEN(ts).t_op;
         pn = NewBinary(cx, TOK_EQOP, op, pn, RelExpr(cx, ts, tc), tc);
+
+        if (pn->pn_type == TOK_EQOP &&
+            pn->pn_op != JSOP_NEW_EQ && pn->pn_op != JSOP_NEW_NE &&
+            (!AllowImplicitConversionOnCompare(cx, pn->pn_left) ||
+            !AllowImplicitConversionOnCompare(cx, pn->pn_right))) {
+
+            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                             JSREPORT_WARNING |
+                                             JSREPORT_STRICT,
+                                             JSMSG_COMPARISON_TYPE_CONV)) {
+                return NULL;
+            }
+        }
     }
     return pn;
 }
@@ -2568,6 +2765,14 @@ UnaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
       case TOK_UNARYOP:
       case TOK_PLUS:
       case TOK_MINUS:
+        if (tt == TOK_UNARYOP && CURRENT_TOKEN(ts).t_op == JSOP_VOID &&
+           !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                        JSREPORT_WARNING |
+                                        JSREPORT_STRICT,
+                                        JSMSG_USELESS_VOID)) {
+            return NULL;
+        }
+
         pn = NewParseNode(cx, &CURRENT_TOKEN(ts), PN_UNARY, tc);
         if (!pn)
             return NULL;
@@ -2632,6 +2837,16 @@ UnaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                     return NULL;
                 pn2->pn_pos.begin = pn->pn_pos.begin;
                 pn = pn2;
+
+                if (((tt == TOK_INC && js_PeekToken(cx, ts) == TOK_PLUS) ||
+                    tt == TOK_DEC && js_PeekToken(cx, ts) == TOK_MINUS) &&
+                    !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 JSREPORT_WARNING |
+                                                 JSREPORT_STRICT,
+                                                 JSMSG_MULTIPLE_PLUS_MINUS))
+                {
+                    return NULL;
+                }
             }
         }
         break;

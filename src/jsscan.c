@@ -547,7 +547,7 @@ js_ReportCompileErrorNumber(JSContext *cx, JSTokenStream *ts,
     JS_ASSERT(!ts || ts->linebuf.limit < ts->linebuf.base + JS_LINE_LIMIT);
     onError = cx->errorReporter;
     if (onError) {
-        /* 
+        /*
          * We are typically called with non-null ts and null cg from jsparse.c.
          * We can be called with null ts from the regexp compilation functions.
          * The code generator (jsemit.c) may pass null ts and non-null cg.
@@ -590,7 +590,7 @@ js_ReportCompileErrorNumber(JSContext *cx, JSTokenStream *ts,
          * as the non-top-level "load", "eval", or "compile" native function
          * returns false, the top-level reporter will eventually receive the
          * uncaught exception report.
-         * 
+         *
          * XXX it'd probably be best if there was only one call to this
          * function, but there seem to be two error reporter call points.
          */
@@ -738,6 +738,51 @@ GetUnicodeEscape(JSTokenStream *ts)
     return '\\';
 }
 
+JSBool
+AllowNewlineBetweenTokens(JSToken *tp, JSTokenType tt)
+{
+    switch (tp->type) {
+      case TOK_EOF:
+      case TOK_COMMA:
+      case TOK_DOT:
+      case TOK_SEMI:
+      case TOK_COLON:
+      case TOK_LC:
+      case TOK_RC:
+      case TOK_LP:
+      case TOK_LB:
+      case TOK_ASSIGN:
+      case TOK_RELOP:
+      case TOK_HOOK:
+      case TOK_PLUS:
+      case TOK_MINUS:
+      case TOK_STAR:
+      case TOK_DIVOP:
+      case TOK_EQOP:
+      case TOK_SHOP:
+      case TOK_OR:
+      case TOK_AND:
+      case TOK_BITOR :
+      case TOK_BITXOR:
+      case TOK_BITAND:
+      case TOK_ELSE:
+      case TOK_TRY:
+        return JS_TRUE;
+
+      case TOK_UNARYOP:
+        return (tp->t_op == JSOP_NOT || tp->t_op == JSOP_BITNOT);
+
+      default:
+        break;
+    }
+
+    /* allow a line break between a right-paren and left-curly */
+    if (tp->type == TOK_RP && tt == TOK_LC)
+        return JS_TRUE;
+        
+    return JS_FALSE;
+}
+
 JSTokenType
 js_GetToken(JSContext *cx, JSTokenStream *ts)
 {
@@ -746,6 +791,11 @@ js_GetToken(JSContext *cx, JSTokenStream *ts)
     int32 c;
     JSAtom *atom;
     JSBool hadUnicodeEscape;
+    JSBool hasLineBreak;
+    JSToken *origtoken;
+
+    hasLineBreak = JS_FALSE;
+    origtoken = &CURRENT_TOKEN(ts);
 
 #define INIT_TOKENBUF(tb)   ((tb)->ptr = (tb)->base)
 #define FINISH_TOKENBUF(tb) if (!AddToTokenBuf(cx, tb, 0)) RETURN(TOK_ERROR)
@@ -773,6 +823,7 @@ retry:
     do {
         c = GetChar(ts);
         if (c == '\n') {
+            hasLineBreak = JS_TRUE;
             ts->flags &= ~TSF_DIRTYLINE;
             if (ts->flags & TSF_NEWLINES)
                 break;
@@ -832,13 +883,20 @@ retry:
         RETURN(TOK_NAME);
     }
 
-    if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
+if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
         jsint radix;
         const jschar *endptr;
         jsdouble dval;
 
         radix = 10;
         INIT_TOKENBUF(&ts->tokenbuf);
+
+        if (c == '.' && !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                     JSREPORT_WARNING |
+                                                     JSREPORT_STRICT,
+                                                     JSMSG_LEADING_DECIMAL_POINT)) {
+            return(TOK_ERROR);
+        }
 
         if (c == '0') {
             if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
@@ -851,6 +909,13 @@ retry:
                 radix = 16;
             } else if (JS7_ISDEC(c)) {
                 radix = 8;
+
+                if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 JSREPORT_WARNING |
+                                                 JSREPORT_STRICT,
+                                                 JSMSG_OCTAL_NUMBER)) {
+                    return(TOK_ERROR);
+                }
             }
         }
 
@@ -881,11 +946,22 @@ retry:
 
         if (radix == 10 && (c == '.' || JS_TOLOWER(c) == 'e')) {
             if (c == '.') {
+                int digitsafterdecimal = -1;
                 do {
                     if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
                         RETURN(TOK_ERROR);
+                    digitsafterdecimal++;
                     c = GetChar(ts);
                 } while (JS7_ISDEC(c));
+
+                if (!digitsafterdecimal) {
+                    if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                     JSREPORT_WARNING |
+                                                     JSREPORT_STRICT,
+                                                     JSMSG_TRAILING_DECIMAL_POINT)) {
+                        return(TOK_ERROR);
+                    }
+                }
             }
             if (JS_TOLOWER(c) == 'e') {
                 if (!AddToTokenBuf(cx, &ts->tokenbuf, (jschar)c))
@@ -906,6 +982,15 @@ retry:
                         RETURN(TOK_ERROR);
                     c = GetChar(ts);
                 } while (JS7_ISDEC(c));
+            }
+        }
+
+        if (c == '.') {
+            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                            JSREPORT_WARNING |
+                                            JSREPORT_STRICT,
+                                            JSMSG_TRAILING_DECIMAL_POINT)) {
+                return(TOK_ERROR);
             }
         }
 
@@ -1009,8 +1094,8 @@ retry:
     }
 
     switch (c) {
-      case '\n': 
-        c = TOK_EOL; 
+      case '\n':
+        c = TOK_EOL;
         break;
 
       case ';': c = TOK_SEMI; break;
@@ -1138,6 +1223,14 @@ skipline:
             while ((c = GetChar(ts)) != EOF &&
                    !(c == '*' && MatchChar(ts, '/'))) {
                 /* Ignore all characters until comment close. */
+
+                if (c == '/' && MatchChar(ts, '*') &&
+                    !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 JSREPORT_WARNING |
+                                                 JSREPORT_STRICT,
+                                                 JSMSG_NESTED_COMMENT)) {
+                    RETURN(TOK_ERROR);
+                }
             }
             if (c == EOF) {
                 js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
@@ -1196,6 +1289,19 @@ skipline:
             atom = js_AtomizeObject(cx, obj, 0);
             if (!atom)
                 RETURN(TOK_ERROR);
+
+            if (!origtoken || (origtoken->type != TOK_COMMA &&
+                (origtoken->type != TOK_ASSIGN || origtoken->t_op != JSOP_NOP) &&
+                origtoken->type != TOK_COLON && origtoken->type != TOK_LP)) {
+                /* report bad regex placement */
+                if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 JSREPORT_WARNING |
+                                                 JSREPORT_STRICT,
+                                                 JSMSG_MISPLACED_REGEX)) {
+                    RETURN(TOK_ERROR);
+                }
+            }
+
             tp->t_op = JSOP_OBJECT;
             tp->t_atom = atom;
             RETURN(TOK_OBJECT);
@@ -1292,6 +1398,17 @@ skipline:
         js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                     JSMSG_ILLEGAL_CHARACTER);
         RETURN(TOK_ERROR);
+    }
+
+    /* check tokens on end of line */
+    if (hasLineBreak &&
+        !AllowNewlineBetweenTokens(origtoken, (JSTokenType)c)) {    
+        if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING |
+                                         JSREPORT_STRICT,
+                                         JSMSG_AMBIGUOUS_NEWLINE)) {
+            return(TOK_ERROR);
+        }
     }
 
     JS_ASSERT(c < TOK_LIMIT);
