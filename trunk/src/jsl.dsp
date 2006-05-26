@@ -244,10 +244,6 @@ SOURCE=".\jsl-test.js"
 # End Source File
 # Begin Source File
 
-SOURCE=.\jsl.msg
-# End Source File
-# Begin Source File
-
 SOURCE=..\src\jsopcode.tbl
 # End Source File
 # Begin Source File

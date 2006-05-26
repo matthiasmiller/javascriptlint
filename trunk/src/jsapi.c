@@ -1072,6 +1072,37 @@ JS_SetGlobalObject(JSContext *cx, JSObject *obj)
     cx->globalObject = obj;
 }
 
+JS_PUBLIC_API(JSBool)
+JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
+                      JSLImportCallback importCallback, void *parms)
+{
+    JSLint *newLint;
+    newLint = JS_malloc(cx, sizeof(JSLint));
+    if (!newLint)
+        return JS_FALSE;
+    memset(newLint, 0, sizeof(JSLint));
+
+    newLint->importCallback = importCallback;
+    newLint->importCallbackParms = parms;
+    newLint->scriptIdentifiers = curScriptIdentifiers;
+    newLint->dependencyList = dependencyIdentifiers;
+    newLint->down = cx->lint;
+    cx->lint = newLint;
+    return JS_TRUE;
+}
+
+JS_PUBLIC_API(void)
+JS_PopLintIdentifers(JSContext *cx)
+{
+    JSLint *prevLint;
+    
+    if (cx->lint) {
+        prevLint = cx->lint->down;
+        JS_free(cx, cx->lint);
+        cx->lint = prevLint;
+    }
+}
+
 static JSObject *
 InitFunctionAndObjectClasses(JSContext *cx, JSObject *obj)
 {

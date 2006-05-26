@@ -741,7 +741,11 @@ GetUnicodeEscape(JSTokenStream *ts)
 JSBool
 AllowNewlineBetweenTokens(JSToken *tp, JSTokenType tt)
 {
-    switch (tp->type) {
+   /* okay if there's a left curly, right curly, or right bracket on the next line */
+   if (tt == TOK_LC || tt == TOK_RC || tt == TOK_RB)
+      return JS_TRUE;
+
+   switch (tp->type) {
       case TOK_EOF:
       case TOK_COMMA:
       case TOK_DOT:
@@ -773,15 +777,21 @@ AllowNewlineBetweenTokens(JSToken *tp, JSTokenType tt)
         return (tp->t_op == JSOP_NOT || tp->t_op == JSOP_BITNOT);
 
       default:
-        break;
+        return JS_FALSE;
     }
-
-    /* allow a line break between a right-paren and left-curly */
-    if (tp->type == TOK_RP && tt == TOK_LC)
-        return JS_TRUE;
-        
-    return JS_FALSE;
 }
+
+#define JSL_MATCH_COMMENT(control_comment, c) \
+    JS_BEGIN_MACRO \
+        if ((control_comment)) { \
+            if (*(control_comment) && *(control_comment) == (c)) \
+                (control_comment)++; \
+            else \
+                (control_comment) = NULL; \
+        } \
+    JS_END_MACRO
+
+#define JSL_MATCHED_COMMENT(control_comment) ((control_comment) && !*(control_comment))
 
 JSTokenType
 js_GetToken(JSContext *cx, JSTokenStream *ts)
@@ -891,10 +901,11 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
         radix = 10;
         INIT_TOKENBUF(&ts->tokenbuf);
 
-        if (c == '.' && !js_ReportCompileErrorNumber(cx, ts, NULL,
-                                                     JSREPORT_WARNING |
-                                                     JSREPORT_STRICT,
-                                                     JSMSG_LEADING_DECIMAL_POINT)) {
+        if (cx->lint && c == '.' &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING |
+                                         JSREPORT_STRICT,
+                                         JSMSG_LEADING_DECIMAL_POINT)) {
             return(TOK_ERROR);
         }
 
@@ -910,7 +921,8 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
             } else if (JS7_ISDEC(c)) {
                 radix = 8;
 
-                if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                if (cx->lint &&
+                    !js_ReportCompileErrorNumber(cx, ts, NULL,
                                                  JSREPORT_WARNING |
                                                  JSREPORT_STRICT,
                                                  JSMSG_OCTAL_NUMBER)) {
@@ -954,7 +966,7 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
                     c = GetChar(ts);
                 } while (JS7_ISDEC(c));
 
-                if (!digitsafterdecimal) {
+                if (cx->lint && !digitsafterdecimal) {
                     if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                                      JSREPORT_WARNING |
                                                      JSREPORT_STRICT,
@@ -985,7 +997,7 @@ if (JS7_ISDEC(c) || (c == '.' && JS7_ISDEC(PeekChar(ts)))) {
             }
         }
 
-        if (c == '.') {
+        if (cx->lint && c == '.') {
             if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                             JSREPORT_WARNING |
                                             JSREPORT_STRICT,
@@ -1220,18 +1232,134 @@ skipline:
             goto retry;
         }
         if (MatchChar(ts, '*')) {
+            JSBool startedControlComment, endedControlComment;
+            const char *controlCommentIgnore, *controlCommentEnd,
+                *controlCommentOptionExplicit, *controlCommentImport;
+            /*arbitrary size*/
+            char importPath[1024], *importPathPos;
+
+            importPathPos = importPath;
+            *importPathPos = 0;
+
+            if (cx->lint) {
+                controlCommentIgnore = "@ignore@";
+                controlCommentEnd = "@end@";
+                controlCommentOptionExplicit = "@option explicit@";
+                controlCommentImport = "@import ";
+
+                startedControlComment = PeekChar(ts) == '@';
+            }
+
             while ((c = GetChar(ts)) != EOF &&
                    !(c == '*' && MatchChar(ts, '/'))) {
                 /* Ignore all characters until comment close. */
 
-                if (c == '/' && MatchChar(ts, '*') &&
-                    !js_ReportCompileErrorNumber(cx, ts, NULL,
-                                                 JSREPORT_WARNING |
-                                                 JSREPORT_STRICT,
-                                                 JSMSG_NESTED_COMMENT)) {
-                    RETURN(TOK_ERROR);
+                if (cx->lint) {
+                    if (c == '/' && MatchChar(ts, '*') &&
+                        !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                     JSREPORT_WARNING |
+                                                     JSREPORT_STRICT,
+                                                     JSMSG_NESTED_COMMENT)) {
+                        RETURN(TOK_ERROR);
+                    }
+
+                    /* try to advance control comment */
+                    if (startedControlComment) {
+                        JSL_MATCH_COMMENT(controlCommentIgnore, c);
+                        JSL_MATCH_COMMENT(controlCommentEnd, c);
+                        JSL_MATCH_COMMENT(controlCommentOptionExplicit, c);
+                        if (JSL_MATCHED_COMMENT(controlCommentImport)) {
+                            if (importPathPos && importPathPos - importPath < sizeof(importPath)-1) {
+                                *importPathPos++ = (char)c;
+                                *importPathPos = 0;
+                            }
+                            else {
+                                importPathPos = NULL;
+                            }
+                        }
+                        else {
+                            JSL_MATCH_COMMENT(controlCommentImport, c);
+                        }
+                    }
+
+                    endedControlComment = (c == '@');
                 }
             }
+
+            if (cx->lint) {
+                if ((!startedControlComment && endedControlComment) ||
+                    (startedControlComment && !endedControlComment)) {
+                    /* looks like a control comment */
+                    if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_CONTROL_COMMENT))
+                        RETURN(TOK_ERROR);
+                }
+                else if (JSL_MATCHED_COMMENT(controlCommentIgnore)) {
+                    /* check nesting */
+                    if (cx->lint->controlCommentsIgnore &&
+                        !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
+                                                     JSMSG_MISMATCH_CTRL_COMMENTS))
+                    {
+                        RETURN(TOK_ERROR);
+                    }
+                    cx->lint->controlCommentsIgnore = JS_TRUE;
+                }
+                else if (JSL_MATCHED_COMMENT(controlCommentEnd)) {
+                    /* check nesting */
+                    if (!cx->lint->controlCommentsIgnore &&
+                        !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
+                                                     JSMSG_MISMATCH_CTRL_COMMENTS)) {
+                        RETURN(TOK_ERROR);
+                    }
+                    cx->lint->controlCommentsIgnore = JS_FALSE;
+                }
+                else if (JSL_MATCHED_COMMENT(controlCommentOptionExplicit)) {
+                    if (cx->lint->optionExplicit) {
+                        /* warn about duplicates */
+                        if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_DUP_OPTION_EXPLICIT))
+                            RETURN(TOK_ERROR);
+                    }
+                    else if (cx->lint->hasCompletedPartialScript) {
+                        /* warn about partial script that was missed */
+                        if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_PARTIAL_OPTION_EXPLICIT))
+                            RETURN(TOK_ERROR);
+                    }
+                    else {
+                        cx->lint->optionExplicit = JS_TRUE;
+                    }
+                }
+                else if (JSL_MATCHED_COMMENT(controlCommentImport)) {
+                    if (importPathPos > importPath) {
+                        /* trim @ */
+                        importPathPos--;
+                        *importPathPos = 0;
+
+                        /* trim trailing whitespace */
+                        while (importPathPos > importPath && JS_ISSPACE(*(importPathPos-1))) {
+                            importPathPos--;
+                            *importPathPos = 0;
+                        }
+
+                        /* trim leading whitespace */
+                        importPathPos = importPath;
+                        while (*importPathPos && JS_ISSPACE(*importPathPos))
+                            importPathPos++;
+
+                        if (*importPathPos) {
+                            if (importPathPos && cx->lint->importCallback)
+                                cx->lint->importCallback(cx, importPath, cx->lint->importCallbackParms);
+                        }
+                        else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
+                                                             JSMSG_MISMATCH_CTRL_COMMENTS)) {
+                            RETURN(TOK_ERROR);
+                        }
+                    }
+                    else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
+                                                         JSMSG_MISMATCH_CTRL_COMMENTS)) {
+                        RETURN(TOK_ERROR);
+                    }
+                }
+            }
+
             if (c == EOF) {
                 js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_ERROR,
                                             JSMSG_UNTERMINATED_COMMENT);
@@ -1290,9 +1418,9 @@ skipline:
             if (!atom)
                 RETURN(TOK_ERROR);
 
-            if (!origtoken || (origtoken->type != TOK_COMMA &&
+            if (cx->lint && (!origtoken || (origtoken->type != TOK_COMMA &&
                 (origtoken->type != TOK_ASSIGN || origtoken->t_op != JSOP_NOP) &&
-                origtoken->type != TOK_COLON && origtoken->type != TOK_LP)) {
+                origtoken->type != TOK_COLON && origtoken->type != TOK_LP))) {
                 /* report bad regex placement */
                 if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                                  JSREPORT_WARNING |
@@ -1401,8 +1529,8 @@ skipline:
     }
 
     /* check tokens on end of line */
-    if (hasLineBreak &&
-        !AllowNewlineBetweenTokens(origtoken, (JSTokenType)c)) {    
+    if (cx->lint && hasLineBreak &&
+        !AllowNewlineBetweenTokens(origtoken, (JSTokenType)c)) {
         if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING |
                                          JSREPORT_STRICT,

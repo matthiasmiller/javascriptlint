@@ -303,6 +303,29 @@ typedef struct JSResolvingEntry {
 #define JSRESFLAG_LOOKUP        0x1     /* resolving id from lookup */
 #define JSRESFLAG_WATCH         0x2     /* resolving id from watch */
 
+struct JSLObjectList {
+    JSCList             links;
+    JSObject            *obj;
+};
+
+typedef struct JSLint {
+    JSObject            *scriptIdentifiers; /* contains identifiers declared in this script */
+    JSLObjectList       *dependencyList;    /* contains identifiers declared in dependencies (scripts) */
+
+    JSLImportCallback   importCallback;
+    void                *importCallbackParms;
+
+    JSBool              hasCompletedPartialScript;
+
+    /* control comments */
+    JSBool              controlCommentsIgnore;
+    JSBool              optionExplicit;
+
+    struct JSLint       *down;
+} JSLint;
+
+#define SHOULD_IGNORE_LINT_WARNINGS(cx) (!(cx)->lint || (cx)->lint->controlCommentsIgnore)
+
 struct JSContext {
     JSCList             links;
 
@@ -412,6 +435,9 @@ struct JSContext {
 
     /* Optional hook to find principals for an object being accessed on cx. */
     JSObjectPrincipalsFinder findObjectPrincipals;
+
+    /* Information required for lint */
+    JSLint              *lint;
 };
 
 /* Slightly more readable macros, also to hide bitset implementation detail. */

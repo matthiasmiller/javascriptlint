@@ -275,6 +275,11 @@ js_DestroyContext(JSContext *cx, JSGCMode gcmode)
         cx->resolvingTable = NULL;
     }
 
+    /* Destroy the lint information */
+    if (cx->lint) {
+        JS_free(cx, cx->lint);
+    }
+
     /* Finally, free cx itself. */
     free(cx);
 }

@@ -1,3 +1,70 @@
+/*@option explicit@*/
+
+/* illegal - j is not declared */
+var g = j;
+var j;
+
+/* illegal - undeclared global */
+z--;
+
+/* illegal - undeclared global */
+y();
+
+/* legal */
+UndeclaredIdentifier(true);
+
+function UndeclaredIdentifier(parm) {
+    var s;
+
+    /* legal - function referencing parameter in parent */
+    var fn = function() { return parm; };
+
+    /* legal - function referening variable in parent */
+    var fn2 = function() { return s; };
+
+    /* legal - defined below */
+    var o = new Child();
+
+    /* legal - function referencing variable in grandparent */
+    function Child() {
+        function Grandchild() {
+            if (parm) {
+                return s;
+            }
+            return null;
+        }
+    }
+
+    /* legal - catch variable */
+    try {
+        throw null;
+    }
+    catch (err) {
+        return err;
+    }
+
+    /* legal - recursion */
+    UndeclaredIdentifier(parm);
+
+    /* legal - this is a property, not a variable */
+    this.q = -1;
+
+    /* legal - global */
+    g++;
+
+    /* illegal */
+    x = 14;
+
+    /* illegal */
+    y();
+
+    /* illegal - z is not yet declared */
+    s = z;
+    var z;
+
+    return "";
+}
+
 function SpiderMonkey(duplicate, duplicate) {
     /* illegal - duplicate formal parameters above */
 
@@ -5,8 +72,8 @@ function SpiderMonkey(duplicate, duplicate) {
     var duplicate;
 
     /* illegal - with is deprecated */
-    with (test) {
-        x = y;
+    with (duplicate) {
+        this.x = this.y;
     }
 
     /* illegal - getter/setter is deprecated */
@@ -14,7 +81,7 @@ function SpiderMonkey(duplicate, duplicate) {
         return "";
     };
     Array.bogon setter = function (o) {
-        push(o);
+        this.push(o);
     };
 
     /* illegal - named function missing return value */
@@ -45,6 +112,7 @@ function SpiderMonkey(duplicate, duplicate) {
     var Check;
 
     /* illegal - assignment in condition */
+    var a, b;
     while (a = b) {
         a++;
     }
@@ -236,6 +304,27 @@ function EndOfLine() {
     i >>>=
         2;
 
+    /* legal */
+    o =
+    {
+        'component one': 1,
+        'component two': 2
+    };
+
+    /* legal */
+    o = {
+        'one': 1,
+        'two': 2
+    };
+
+    /* legal */
+    i = o['one'
+        ];
+
+    /* illegal */
+    i = o
+        ['one'];
+
     /* illegal: identifier */
     s = i
         + "?";
@@ -334,6 +423,7 @@ function UselessExpression() {
 
     /* empty statement within while; useless expression */
     while (false);
+    while (false) {}
 
     /* empty block within for; useless expression */
     for (i = 0; i < 2; i += 1) {
@@ -350,6 +440,14 @@ function UselessExpression() {
 function BlockWithoutBraces() {
     var a, i, s;
     a = new Array(1, 2, 3);
+
+    /* legal: else if */
+    if (s == "false") {
+        i = 0;
+    }
+    else if (s == "true") {
+        i = 1;
+    }
 
     /* if, else */
     if (true)
@@ -573,3 +671,22 @@ function IncDec() {
     /* illegal */
     s = --i;
 }
+
+/* "legal" - can do anything */
+/*@ignore@*/
+var a;
+if (a);
+   var b = a = b+++a;
+   var a = b;
+/*@end@*/
+
+/* illegal - not ending anything */
+/*@end@*/
+
+/* illegal - can't start twice */
+/*@ignore@*/
+/*@ignore@*/
+/*@end@*/
+
+/* illegal - don't forget to end */
+/*@ignore@*/
