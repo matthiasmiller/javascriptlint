@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1h"
+#define JSL_VERSION "0.1i"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -1222,14 +1222,12 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
             /* if not, was this intended as a folder? */
             if (*path && (path[strlen(path)-1] == '/' || path[strlen(path)-1] == '\\')) {
                 OutputErrorMessage(path, 0, 0, NULL, "can't open file", "path does not exist");
-                closedir(search_dir);
                 JS_free(cx, folder);
                 SetExitCode(EXITCODE_FILE_ERROR);
                 return JS_FALSE;
             }
             else {
                 /* treat as a file */
-                closedir(search_dir);
                 JS_free(cx, folder);
                 return ProcessSingleScript(cx, obj, path, NULL);
             }

@@ -277,5 +277,6 @@ MSG_DEF(JSMSG_UNDECLARED_IDENTIFIER,  194, 1, JSEXN_SYNTAXERR, "undeclared ident
 MSG_DEF(JSMSG_INVALID_CONTROL_COMMENT,195, 0, JSEXN_SYNTAXERR, "invalid control comment")
 MSG_DEF(JSMSG_USELESS_ASSIGN,         196, 0, JSEXN_SYNTAXERR, "useless assignment")
 MSG_DEF(JSMSG_AMBIGUOUS_NESTED_STMT,  197, 0, JSEXN_SYNTAXERR, "block statements containing block statements should use curly braces to resolve ambiguity")
-MSG_DEF(JSMSG_MISSING_DEFAULT_CASE,   198, 0, JSEXN_SYNTAXERR, "missing default case in switch statement")
-MSG_DEF(JSMSG_DUPLICATE_CASE_IN_SWITCH,199, 0, JSEXN_SYNTAXERR, "duplicate case in switch statements")
+MSG_DEF(JSMSG_AMBIGUOUS_ELSE_STMT,    198, 0, JSEXN_SYNTAXERR, "the else statement could be matched with one of multiple if statements (use curly braces to indicate intent)")
+MSG_DEF(JSMSG_MISSING_DEFAULT_CASE,   199, 0, JSEXN_SYNTAXERR, "missing default case in switch statement")
+MSG_DEF(JSMSG_DUPLICATE_CASE_IN_SWITCH,200, 0, JSEXN_SYNTAXERR, "duplicate case in switch statements")
