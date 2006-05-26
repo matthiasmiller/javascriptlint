@@ -1259,7 +1259,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 return NULL;
             }
         }
-
+ 
         hadtoken = JS_TRUE;
         beyondreach = (beyondreach || tt == TOK_BREAK || tt == TOK_CONTINUE || tt == TOK_RETURN || tt == TOK_THROW);
         ts->flags &= ~TSF_OPERAND;
@@ -1519,9 +1519,10 @@ AreExpressionsIdentical(JSContext *cx, JSParseNode *pn1, JSParseNode *pn2, JSBoo
             return JS_FALSE;
     }
 
-    /* check atoms on names and properties */
+    /* check atoms on names, properties, and string constants */
     if (pn1->pn_type == TOK_NAME ||
-        pn1->pn_type == TOK_DOT) {
+        pn1->pn_type == TOK_DOT ||
+        pn1->pn_type == TOK_STRING) {
         if (pn1->pn_atom != pn2->pn_atom)
             return JS_FALSE;
     }
@@ -1577,6 +1578,26 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
     CHECK_RECURSION();
 
+    if (cx->lint && tc->topStmt && tc->topStmt->type == STMT_ELSE) {
+        /*
+         * check for an else statement that could be matched against multiple if statements
+         * (go up the statement stack looking for an if statement until a block statement is hit)
+         */
+        JSStmtInfo *curStmt = tc->topStmt->down;
+        while (curStmt && curStmt->type != STMT_BLOCK && curStmt->type != STMT_TRY &&
+            curStmt->type != STMT_CATCH && curStmt->type != STMT_FINALLY) {
+            if (curStmt->type == STMT_IF) {
+                if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 JSREPORT_WARNING | JSREPORT_STRICT,
+                                                 JSMSG_AMBIGUOUS_ELSE_STMT)) {
+                    return NULL;
+                }
+                break;
+            }
+            curStmt = curStmt->down;
+        }
+    }
+
     ts->flags |= TSF_OPERAND;
     tt = js_GetToken(cx, ts);
     ts->flags &= ~TSF_OPERAND;
@@ -1616,7 +1637,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                                              JSREPORT_WARNING |
                                              JSREPORT_STRICT,
                                              JSMSG_BLOCK_WITHOUT_BRACES)) {
-               return NULL;
+                return NULL;
             }
         }
     }

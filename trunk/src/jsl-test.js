@@ -503,6 +503,29 @@ function BlockWithoutBraces() {
         }
 }
 
+function AmbiguousElse() {
+    var i,j;
+
+    if (i)
+        if (j) {
+            j++;
+        }
+    /* error - where does the else go? */
+    else if (j) {
+        i--;
+    }
+
+    if (j)
+        if (i)
+            for (;;)
+                while (j)
+                    if (y)
+                        y--;
+        /* error - where does the else go? */
+        else
+            y++;
+}
+
 function SwitchStatements() {
     var i, o, s;
 
@@ -639,6 +662,10 @@ function SwitchStatements() {
       case o.prop:
         i = 4;
         break;
+      case "\"str1'":
+      case "str2":
+        i = null;
+        break;
 
       /* mistake - duplicated */
       case i:
@@ -658,6 +685,11 @@ function SwitchStatements() {
       /* mistake - duplicated */
       case o['prop']:
         s = i;
+        break;
+
+      /* mistake - duplicated */
+      case '"str1\'':
+        s = 0;
         break;
 
       default:
