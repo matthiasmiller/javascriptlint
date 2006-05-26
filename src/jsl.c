@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.2.0"
+#define JSL_VERSION "0.2.1"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -184,6 +184,7 @@ JSLScriptList gScriptList;
 
 /* settings */
 JSBool gAlwaysUseOptionExplicit = JS_FALSE;
+JSBool gEnableLegacyControlComments = JS_TRUE;
 JSBool gLambdaAssignRequiresSemicolon = JS_TRUE;
 JSBool gRecurse = JS_FALSE;
 JSBool gShowFileListing = JS_TRUE;
@@ -863,7 +864,7 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
 
     if (JS_PushLintIdentifers(cx, scriptInfo->obj, &dependencies,
                               gAlwaysUseOptionExplicit, gLambdaAssignRequiresSemicolon,
-                              ImportScript, &importParms)) {
+                              gEnableLegacyControlComments, ImportScript, &importParms)) {
         tmp_result = ProcessScriptContents(cx, obj, GetFileTypeFromPath(filename), filename,
             contents, ImportScript, &importParms);
         JS_PopLintIdentifers(cx);
@@ -1334,7 +1335,7 @@ ProcessStdin(JSContext *cx, JSObject *obj)
     *contentsPos = 0;
 
     /* lint */
-    if (!JS_PushLintIdentifers(cx, NULL, NULL, JS_FALSE, JS_TRUE, NULL, NULL)) {
+    if (!JS_PushLintIdentifers(cx, NULL, NULL, JS_FALSE, JS_TRUE, JS_TRUE, NULL, NULL)) {
         JS_free(cx, contents);
         SetExitCode(EXITCODE_JS_ERROR);
         return JS_FALSE;
@@ -1417,6 +1418,16 @@ PrintDefaultConf(void)
         "# property (such as a function prototype) must be followed by a semicolon.\n"
         "#\n"
         "+lambda_assign_requires_semicolon\n"
+        , stdout);
+
+    fputs(
+        "\n\n### Control Comments\n"
+        "# Both JavaScript Lint and the JScript interpreter confuse each other with the syntax for\n"
+        "# the /*@keyword@*/ control comments and JScript conditional comments. (The latter is\n"
+        "# enabled in JScript with @cc_on@). The /*jsl:keyword*/ syntax is preferred for this reason,\n"
+        "# although legacy control comments are enabled by default for backward compatibility.\n"
+        "#\n"
+        "+legacy_control_comments\n"
         , stdout);
 
     fputs(
@@ -1651,6 +1662,9 @@ ProcessSettingErr_Garbage:
             }
             else if (strcasecmp(linepos, "lambda_assign_requires_semicolon") == 0) {
                 gLambdaAssignRequiresSemicolon = enable;
+            }
+            else if (strcasecmp(linepos, "legacy_control_comments") == 0) {
+               gEnableLegacyControlComments = enable;
             }
             else if (strncasecmp(linepos, "define", strlen("define")) == 0) {
                 jsval val;
