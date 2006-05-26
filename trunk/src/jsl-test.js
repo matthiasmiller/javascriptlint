@@ -59,17 +59,11 @@ function SpiderMonkey() {
     }
 }
 
-
+var g;
 function option_explicit(parm) {
     /* legal - j is declared */
-    var g = j;
+    g = j;
     var j;
-
-    /* illegal - undeclared global */
-    z--;
-
-    /* illegal - undeclared global */
-    y();
 
     var s;
 
@@ -109,15 +103,22 @@ function option_explicit(parm) {
     /* legal - global */
     g++;
 
+    /* legal - ignore undeclared identifier */
+    /*jsl:ignore*/
+    g = undefined_var;
+    /*jsl:end*/
+
+    /* illegal - undeclared global */
+    z--;
+
+    /* illegal - undeclared global */
+    y();
+
     /* illegal */
     x = 14;
 
     /* illegal */
     y();
-
-    /* illegal - z is not yet declared */
-    s = z;
-    var z;
 
     return "";
 }

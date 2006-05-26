@@ -444,6 +444,85 @@ FindLintIdentifier(JSContext *cx, jsid id, JSObject **objp, JSProperty **propp, 
 }
 
 static JSBool
+MarkIfDeclared(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn)
+{
+    JSAtomListElement *ale;
+    JSAtom *atom;
+    JSObject *obj, *pobj;
+    JSScopeProperty *sprop;
+    JSObject *scope;
+    JSTreeContext *curtc;
+    JSStackFrame *curframe;
+    JSStmtInfo *curstmt;
+
+    atom = pn->pn_atom;
+    scope = cx->fp->scopeChain;
+
+    /* nasty, but undeclared identifiers aren't warned against until end */
+    if (cx->lint->controlCommentsIgnore) {
+        pn->pn_attrs |= JSPROP_LINT_IGNORE;
+        return JS_TRUE;
+    }
+
+    if (scope) {
+        /* Find the topmost object in the scope chain. */
+        do {
+            obj = scope;
+            scope = OBJ_GET_PARENT(cx, obj);
+        } while (scope);
+    } else {
+        obj = cx->globalObject;
+    }
+
+    if (obj && !OBJ_LOOKUP_PROPERTY(cx, obj, (jsid)atom, &pobj, (JSProperty**)&sprop))
+        return JS_FALSE;
+    if (pobj)
+        goto success;
+
+    curframe = cx->fp;
+    while (curframe) {
+        if (!OBJ_LOOKUP_PROPERTY(cx, curframe->varobj, (jsid)atom, &pobj, (JSProperty**)&sprop))
+            return JS_FALSE;
+        if (pobj)
+            goto success;
+        curframe = curframe->down;
+    }
+
+    curtc = tc;
+    while (curtc) {
+        ATOM_LIST_SEARCH(ale, &curtc->decls, atom);
+        if (ale)
+            goto success;
+        curtc = curtc->down;
+    }
+
+    curstmt = tc->topStmt;
+    while (curstmt) {
+        if (curstmt->label && curstmt->label == atom)
+            goto success;
+        curstmt = curstmt->down;
+    }
+
+    if (js_PeekToken(cx, ts) == TOK_COLON) {
+        /* assume that it's a label, which is actually a declaration */
+        goto success;
+    }
+
+    /* check for previous identifier */
+    if (!FindLintIdentifier(cx, (jsid)atom, &pobj, (JSProperty**)&sprop, NULL)) {
+        return JS_FALSE;
+    }
+    if (pobj)
+        goto success;
+
+    return JS_TRUE;
+
+success:
+    pn->pn_attrs |= JSPROP_LINT_DECLARED;
+    return JS_TRUE;
+}
+
+static JSBool
 WarnUndeclaredIdentifiers(JSCodeGenerator *cg, JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
                           JSParseNode *pn, JSParseNode *parentNode, JSParseNode *grandParentNode)
 {
@@ -452,36 +531,26 @@ WarnUndeclaredIdentifiers(JSCodeGenerator *cg, JSContext *cx, JSTokenStream *ts,
     if (!pn)
         return JS_TRUE;
 
-    if (pn->pn_type == TOK_NAME && (pn->pn_attrs & JSPROP_LINT_IGNORE) == 0) {
+    if (pn->pn_type == TOK_NAME && (pn->pn_attrs & JSPROP_LINT_IGNORE) == 0 && (pn->pn_attrs & JSPROP_LINT_DECLARED) == 0) {
+        if (!MarkIfDeclared(cx, ts, tc, pn))
+            return JS_FALSE;
+
         if ((pn->pn_attrs & JSPROP_LINT_DECLARED) == 0) {
-            JSTreeContext *curtc;
-            JSAtomListElement *ale;
+            /* hack : temporarily change current line for error reporting */
+            JSBool res;
+            uintN start = CG_CURRENT_LINE(cg);
+            const char *name = js_AtomToPrintableString(cx, pn->pn_atom);
 
-            curtc = tc;
-            while (curtc) {
-                ATOM_LIST_SEARCH(ale, &curtc->decls, pn->pn_atom);
-                if (ale) {
-                    break;
-                }
-                else {
-                    /* hack : temporarily change current line for error reporting */
-                    JSBool res;
-                    uintN start = CG_CURRENT_LINE(cg);
-                    const char *name = js_AtomToPrintableString(cx, pn->pn_atom);
+            CG_CURRENT_LINE(cg) = pn->pn_pos.begin.lineno;
+            res = js_ReportCompileErrorNumber(cx, NULL, cg,
+                                              JSREPORT_WARNING |
+                                              JSREPORT_STRICT,
+                                              JSMSG_UNDECLARED_IDENTIFIER,
+                                              name);
+            CG_CURRENT_LINE(cg) = start;
 
-                    CG_CURRENT_LINE(cg) = pn->pn_pos.begin.lineno;
-                    res = js_ReportCompileErrorNumber(cx, NULL, cg,
-                                                      JSREPORT_WARNING |
-                                                      JSREPORT_STRICT,
-                                                      JSMSG_UNDECLARED_IDENTIFIER,
-                                                      name);
-                    CG_CURRENT_LINE(cg) = start;
-
-                    if (!res)
-                        return JS_FALSE;
-                }
-                curtc = curtc->down;
-            }
+            if (!res)
+                return JS_FALSE;
         }
     }
 
@@ -3461,85 +3530,6 @@ MemberExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
     if (tt == TOK_ERROR)
         return NULL;
     return pn;
-}
-
-static JSBool
-MarkIfDeclared(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode *pn)
-{
-    JSAtomListElement *ale;
-    JSAtom *atom;
-    JSObject *obj, *pobj;
-    JSScopeProperty *sprop;
-    JSObject *scope;
-    JSTreeContext *curtc;
-    JSStackFrame *curframe;
-    JSStmtInfo *curstmt;
-
-    atom = pn->pn_atom;
-    scope = cx->fp->scopeChain;
-
-    /* nasty, but undeclared identifiers aren't warned against until end */
-    if (cx->lint->controlCommentsIgnore) {
-        pn->pn_attrs |= JSPROP_LINT_IGNORE;
-        return JS_TRUE;
-    }
-
-    if (scope) {
-        /* Find the topmost object in the scope chain. */
-        do {
-            obj = scope;
-            scope = OBJ_GET_PARENT(cx, obj);
-        } while (scope);
-    } else {
-        obj = cx->globalObject;
-    }
-
-    if (obj && !OBJ_LOOKUP_PROPERTY(cx, obj, (jsid)atom, &pobj, (JSProperty**)&sprop))
-        return JS_FALSE;
-    if (pobj)
-        goto success;
-
-    curframe = cx->fp;
-    while (curframe) {
-        if (!OBJ_LOOKUP_PROPERTY(cx, curframe->varobj, (jsid)atom, &pobj, (JSProperty**)&sprop))
-            return JS_FALSE;
-        if (pobj)
-            goto success;
-        curframe = curframe->down;
-    }
-
-    curtc = tc;
-    while (curtc) {
-        ATOM_LIST_SEARCH(ale, &curtc->decls, atom);
-        if (ale)
-            goto success;
-        curtc = curtc->down;
-    }
-
-    curstmt = tc->topStmt;
-    while (curstmt) {
-        if (curstmt->label && curstmt->label == atom)
-            goto success;
-        curstmt = curstmt->down;
-    }
-
-    if (js_PeekToken(cx, ts) == TOK_COLON) {
-        /* assume that it's a label, which is actually a declaration */
-        goto success;
-    }
-
-    /* check for previous identifier */
-    if (!FindLintIdentifier(cx, (jsid)atom, &pobj, (JSProperty**)&sprop, NULL)) {
-        return JS_FALSE;
-    }
-    if (pobj)
-        goto success;
-
-    return JS_TRUE;
-
-success:
-    pn->pn_attrs |= JSPROP_LINT_DECLARED;
-    return JS_TRUE;
 }
 
 static JSParseNode *

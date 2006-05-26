@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1l"
+#define JSL_VERSION "0.1m"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -1706,6 +1706,9 @@ ProcessSettingErr_Garbage:
                 gPauseAtEnd = JS_TRUE;
             }
 #endif
+            else if (strcasecmp(linepos, "useless_expr") == 0) {
+                /* deprecated */
+            }
             else {
                 // keep in sync with PrintDefaultConf
                 for (i = 1; i < JSErr_Limit; i++) {
