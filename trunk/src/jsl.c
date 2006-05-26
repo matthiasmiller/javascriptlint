@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.2.1"
+#define JSL_VERSION "0.2.2"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -109,6 +109,7 @@
 
 typedef enum {
     JSL_PLACEHOLDER_FILE,
+    JSL_PLACEHOLDER_FILENAME,
     JSL_PLACEHOLDER_LINE,
     JSL_PLACEHOLDER_COL,
     JSL_PLACEHOLDER_ERROR,
@@ -120,6 +121,7 @@ typedef enum {
 
 const char *placeholders[] = {
     "__FILE__",
+    "__FILENAME__",
     "__LINE__",
     "__COL__",
     "__ERROR__",
@@ -445,7 +447,7 @@ GetFileName(const char *path)
 
 /* lineno may be zero if line number is not given */
 static void
-OutputErrorMessage(const char *filename, int lineno, int colno, const char *errName,
+OutputErrorMessage(const char *path, int lineno, int colno, const char *errName,
                    const char *messagePrefix, const char *message)
 {
     const char *formatPos;
@@ -479,8 +481,13 @@ OutputErrorMessage(const char *filename, int lineno, int colno, const char *errN
 
         switch (placeholderType) {
           case JSL_PLACEHOLDER_FILE:
-            if (filename)
-                fputs(filename, stdout);
+            if (path)
+                fputs(path, stdout);
+            break;
+
+          case JSL_PLACEHOLDER_FILENAME:
+            if (path)
+                fputs(GetFileName(path), stdout);
             break;
 
           case JSL_PLACEHOLDER_LINE:
@@ -763,7 +770,7 @@ static JSBool
 ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScriptList *parentScript)
 {
     JSLImportScriptParms importParms;
-    char filename[MAXPATHLEN+1];
+    char path[MAXPATHLEN+1];
     long fileSize;
     char *contents;
     JSLScriptList *scriptInfo;
@@ -791,11 +798,11 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
         chdir(folder);
         JS_smprintf_free(folder);
 
-        tmp_result = (JSL_RealPath(relpath, filename) != NULL);
+        tmp_result = (JSL_RealPath(relpath, path) != NULL);
         chdir(workingDir);
     }
     else {
-        tmp_result = (JSL_RealPath(relpath, filename) != NULL);
+        tmp_result = (JSL_RealPath(relpath, path) != NULL);
     }
 
     if (!tmp_result) {
@@ -805,20 +812,20 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
 	}
 
     /* returns false if already in list */
-    tmp_result = AddNewScriptToList(cx, filename, &scriptInfo);
+    tmp_result = AddNewScriptToList(cx, path, &scriptInfo);
     if (parentScript)
         AddDirectDependency(&parentScript->directDependencies, scriptInfo);
     if (!tmp_result)
         return JS_TRUE;
 
     if (gShowFileListing) {
-        fputs(GetFileName(filename), stdout);
+        fputs(GetFileName(path), stdout);
         fputc('\n', stdout);
     }
 
-    file = fopen(filename, "r");
+    file = fopen(path, "r");
     if (!file) {
-        OutputErrorMessage(filename, 0, 0, NULL, "can't open file", strerror(errno));
+        OutputErrorMessage(path, 0, 0, NULL, "can't open file", strerror(errno));
         SetExitCode(EXITCODE_FILE_ERROR);
         return JS_FALSE;
     }
@@ -829,7 +836,7 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
         fseek(file, 0, SEEK_SET) != 0) {
 
         fclose(file);
-        OutputErrorMessage(filename, 0, 0, NULL, "can't read file", strerror(errno));
+        OutputErrorMessage(path, 0, 0, NULL, "can't read file", strerror(errno));
         SetExitCode(EXITCODE_FILE_ERROR);
         return JS_FALSE;
     }
@@ -838,7 +845,7 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
     contents = (char*)JS_malloc(cx, fileSize+1);
     if (contents == NULL) {
         fclose(file);
-        OutputErrorMessage(filename, 0, 0, NULL, "can't read file", "out of memory");
+        OutputErrorMessage(path, 0, 0, NULL, "can't read file", "out of memory");
         SetExitCode(EXITCODE_FILE_ERROR);
         return JS_FALSE;
     }
@@ -848,7 +855,7 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
     if (ferror(file)) {
         fclose(file);
         JS_free(cx, contents);
-        OutputErrorMessage(filename, 0, 0, NULL, "can't read file", strerror(errno));
+        OutputErrorMessage(path, 0, 0, NULL, "can't read file", strerror(errno));
         SetExitCode(EXITCODE_FILE_ERROR);
         return JS_FALSE;
     }
@@ -865,7 +872,7 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
     if (JS_PushLintIdentifers(cx, scriptInfo->obj, &dependencies,
                               gAlwaysUseOptionExplicit, gLambdaAssignRequiresSemicolon,
                               gEnableLegacyControlComments, ImportScript, &importParms)) {
-        tmp_result = ProcessScriptContents(cx, obj, GetFileTypeFromPath(filename), filename,
+        tmp_result = ProcessScriptContents(cx, obj, GetFileTypeFromPath(path), path,
             contents, ImportScript, &importParms);
         JS_PopLintIdentifers(cx);
     }
@@ -1394,7 +1401,8 @@ PrintDefaultConf(void)
     fputs(
         "\n\n### Output format\n"
         "# Customize the format of the error message.\n"
-        "#    __FILE__ indicates current file\n"
+        "#    __FILE__ indicates current file path\n"
+        "#    __FILENAME__ indicates current file name\n"
         "#    __LINE__ indicates current line\n"
         "#    __ERROR__ indicates error message\n"
         "#\n"
@@ -1486,9 +1494,9 @@ usage(void)
 }
 
 static int
-LintConfError(JSContext *cx, const char *filename, int lineno, const char *err)
+LintConfError(JSContext *cx, const char *path, int lineno, const char *err)
 {
-    OutputErrorMessage(filename, lineno, 0, NULL, "configuration error", err);
+    OutputErrorMessage(path, lineno, 0, NULL, "configuration error", err);
     SetExitCode(EXITCODE_USAGE_OR_CONFIGERR);
     return EXITCODE_USAGE_OR_CONFIGERR;
 }
@@ -1514,7 +1522,7 @@ IsValidIdentifier(const char *identifier)
 static int
 ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scriptPaths)
 {
-    char filename[MAXPATHLEN+1];
+    char path[MAXPATHLEN+1];
     char line[MAX_CONF_LINE+1];
     int linelen, lineno;
     int ch;
@@ -1522,16 +1530,16 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
     FILE *file;
 
     /* resolve relative paths */
-    if (!JSL_RealPath(relpath, filename)) {
+    if (!JSL_RealPath(relpath, path)) {
         OutputErrorMessage(relpath, 0, 0, NULL, NULL, "unable to resolve path");
         SetExitCode(EXITCODE_FILE_ERROR);
         return EXITCODE_FILE_ERROR;
 	}
 
     // open file
-    file = fopen(filename, "r");
+    file = fopen(path, "r");
     if (!file) {
-        OutputErrorMessage(filename, 0, 0, NULL, "can't open file", strerror(errno));
+        OutputErrorMessage(path, 0, 0, NULL, "can't open file", strerror(errno));
         return EXITCODE_FILE_ERROR;
     }
 
@@ -1554,7 +1562,7 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
             }
             else if (linelen == MAX_CONF_LINE) {
                 fclose(file);
-                return LintConfError(cx, filename, lineno, "exceeded maximum line length");
+                return LintConfError(cx, path, lineno, "exceeded maximum line length");
             }
             else
                 line[linelen++] = ch;
@@ -1587,7 +1595,7 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
 
                 if (!enable) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "-process is an invalid setting");
+                    return LintConfError(cx, path, lineno, "-process is an invalid setting");
                 }
 
                 linepos += strlen("process");
@@ -1626,13 +1634,13 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
                 if (JS_FALSE) {
 ProcessSettingErr_MissingPath:
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "invalid process setting: missing path");
+                    return LintConfError(cx, path, lineno, "invalid process setting: missing path");
 ProcessSettingErr_MissingQuote:
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "invalid process setting: missing or mismatched quote");
+                    return LintConfError(cx, path, lineno, "invalid process setting: missing or mismatched quote");
 ProcessSettingErr_Garbage:
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "invalid process setting: garbage after path");
+                    return LintConfError(cx, path, lineno, "invalid process setting: garbage after path");
                 }
             }
             else if (strncasecmp(linepos, "output-format", strlen("output-format")) == 0) {
@@ -1641,19 +1649,19 @@ ProcessSettingErr_Garbage:
                 /* skip whitespace */
                 if (!*linepos || !isspace(*linepos)) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "expected whitespace after \"output-format\"");
+                    return LintConfError(cx, path, lineno, "expected whitespace after \"output-format\"");
                 }
                 while (*linepos && isspace(*linepos))
                     linepos++;
 
                 if (!*linepos) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "expected format string after \"output-format\"");
+                    return LintConfError(cx, path, lineno, "expected format string after \"output-format\"");
                 }
 
                 if (!enable) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "-output-format is an invalid setting");
+                    return LintConfError(cx, path, lineno, "-output-format is an invalid setting");
                 }
                 strncpy(gOutputFormat, linepos, sizeof(gOutputFormat)-1);
             }
@@ -1675,19 +1683,19 @@ ProcessSettingErr_Garbage:
                 /* skip whitespace */
                 if (!*linepos || !isspace(*linepos)) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "expected whitespace after \"define\"");
+                    return LintConfError(cx, path, lineno, "expected whitespace after \"define\"");
                 }
                 while (*linepos && isspace(*linepos))
                     linepos++;
 
                 if (!*linepos) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "expected identifier after \"define\"");
+                    return LintConfError(cx, path, lineno, "expected identifier after \"define\"");
                 }
 
                 if (!enable) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "Identifiers cannot be undefined");
+                    return LintConfError(cx, path, lineno, "Identifiers cannot be undefined");
                 }
 
                 /* validate identifier */
@@ -1698,26 +1706,26 @@ ProcessSettingErr_Garbage:
                     tmp = JS_smprintf("invalid identifier: \"%s\"", linepos);
 
                     fclose(file);
-                    result = LintConfError(cx, filename, lineno, tmp);
+                    result = LintConfError(cx, path, lineno, tmp);
                     JS_free(cx, tmp);
                     return result;
                 }
                 else if (JS_GetProperty(cx, obj, linepos, &val) && val != JSVAL_VOID) {
                     char *tmp;
                     tmp = JS_smprintf("identifier already defined: \"%s\"", linepos);
-                    OutputErrorMessage(filename, lineno, 0, NULL, "configuration warning", tmp);
+                    OutputErrorMessage(path, lineno, 0, NULL, "configuration warning", tmp);
                     JS_free(cx, tmp);
                 }
                 else if (!JS_SetProperty(cx, obj, linepos, &val)) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "unable to define identifier");
+                    return LintConfError(cx, path, lineno, "unable to define identifier");
                 }
             }
 #ifdef WIN32
             else if (strcasecmp(linepos, "pauseatend") == 0) {
                 if (!enable) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "pauseatend cannot be disabled");
+                    return LintConfError(cx, path, lineno, "pauseatend cannot be disabled");
                 }
 
                 gPauseAtEnd = JS_TRUE;
@@ -1738,13 +1746,13 @@ ProcessSettingErr_Garbage:
                 }
                 if (i == JSErr_Limit) {
                     fclose(file);
-                    return LintConfError(cx, filename, lineno, "unrecognized config setting");
+                    return LintConfError(cx, path, lineno, "unrecognized config setting");
                 }
             }
         }
         else {
             fclose(file);
-            return LintConfError(cx, filename, lineno, "unrecognized line format");
+            return LintConfError(cx, path, lineno, "unrecognized line format");
         }
 
         lineno++;
