@@ -796,17 +796,212 @@ AllowNewlineBetweenTokens(JSToken *tp, JSTokenType tt)
     }
 }
 
-#define JSL_MATCH_COMMENT(control_comment, c) \
-    JS_BEGIN_MACRO \
-        if ((control_comment)) { \
-            if (*(control_comment) && *(control_comment) == JS_TOLOWER(c)) \
-                (control_comment)++; \
-            else \
-                (control_comment) = NULL; \
-        } \
-    JS_END_MACRO
+typedef struct JSLControlComment
+{
+    JSBool isAtFormat;
+    JSBool endedWithAt;
+    const char *controlCommentIgnore;
+    const char *controlCommentEnd;
+    const char *controlCommentOptionExplicit;
+    const char *controlCommentImport;
+    const char *controlCommentFallthru;
 
-#define JSL_MATCHED_COMMENT(control_comment) ((control_comment) && !*(control_comment))
+    /*arbitrary size*/
+    char importPath[1024];
+    char *importPathPos;
+} JSLControlComment;
+
+void
+js_MatchNextControlCommentChar(JSLControlComment *jslCC, const char **strp, int32 c)
+{
+    if (*strp) {
+        if (jslCC->isAtFormat && c == '@' && !jslCC->endedWithAt) {
+            /*
+             * Expect a single '@' at the end of the string (must not be preceded by another '@')
+             * Assume that the '@' character is never included as a part of a control comment string.
+             */
+        }
+        else if (**strp && **strp == JS_TOLOWER(c)) {
+            /* increment to next expected character */
+            (*strp)++;
+        }
+        else {
+            /* unexpected character; nullify */
+            *strp = 0;
+        }
+    }
+}
+
+JSBool
+js_MatchedPartialControlComment(JSLControlComment *jslCC, const char *str)
+{
+    /* matched if pointing to null terminator */
+    return str && !*str;
+}
+
+JSBool
+js_MatchedEntireControlComment(JSLControlComment *jslCC, const char *str)
+{
+    if (!js_MatchedPartialControlComment(jslCC, str))
+        return JS_FALSE;
+
+    /* require final '@' */
+    if (jslCC->isAtFormat && !jslCC->endedWithAt)
+        return JS_FALSE;
+
+    return JS_TRUE;
+}
+
+JSBool
+js_StartControlComment(JSTokenStream *ts, JSLControlComment *jslCC)
+{
+    /*
+     * Both JavaScript Lint and the JScript interpreter (for example, Internet Explorer) confuse each other
+     * with the syntax for the @...@ control comments and JScript conditional comments. The "jsl:" syntax
+     * is preferred for this reason.
+     */
+    jschar controlCommentPrefix[4];
+    if (PeekChars(ts, 4, controlCommentPrefix) &&
+        JS_TOLOWER(controlCommentPrefix[0]) == 'j' &&
+        JS_TOLOWER(controlCommentPrefix[1]) == 's' &&
+        JS_TOLOWER(controlCommentPrefix[2]) == 'l' &&
+        JS_TOLOWER(controlCommentPrefix[3]) == ':') {
+        /* jsl format */
+        SkipChars(ts, 4);
+        jslCC->isAtFormat = JS_FALSE;
+    }
+    else if (MatchChar(ts, '@')) {
+        /* legacy format */
+        jslCC->isAtFormat = JS_TRUE;
+    }
+    else
+        return JS_FALSE;
+
+    jslCC->endedWithAt = JS_FALSE;
+    jslCC->controlCommentIgnore = "ignore";
+    jslCC->controlCommentEnd = "end";
+    jslCC->controlCommentOptionExplicit = "option explicit";
+    jslCC->controlCommentImport = "import ";
+    jslCC->controlCommentFallthru = "fallthru";
+    jslCC->importPath[0] = 0;
+    jslCC->importPathPos = jslCC->importPath;
+    return JS_TRUE;
+}
+
+void
+js_ReadControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *jslCC, int32 c)
+{
+    /* try to advance control comment */
+    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentIgnore, c);
+    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentEnd, c);
+    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentOptionExplicit, c);
+    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentFallthru, c);
+    if (js_MatchedPartialControlComment(jslCC, jslCC->controlCommentImport)) {
+        if (jslCC->importPathPos && jslCC->importPathPos - jslCC->importPath < sizeof(jslCC->importPath)-1) {
+            *jslCC->importPathPos++ = (char)c;
+            *jslCC->importPathPos = 0;
+        }
+        else {
+            jslCC->importPathPos = NULL;
+        }
+    }
+    else {
+        js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentImport, c);
+    }
+
+    jslCC->endedWithAt = (c == '@');
+}
+
+JSBool
+js_ProcessControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *jslCC)
+{
+    uintN defaultErrNumber;
+    defaultErrNumber = jslCC->isAtFormat ? JSMSG_LEGACY_CC_NOT_UNDERSTOOD : JSMSG_JSL_CC_NOT_UNDERSTOOD;
+
+    if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentIgnore)) {
+        /* check nesting */
+        if (cx->lint->controlCommentsIgnore &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
+                                         JSMSG_MISMATCH_CTRL_COMMENTS))
+        {
+            return JS_FALSE;
+        }
+        cx->lint->controlCommentsIgnore = JS_TRUE;
+    }
+    else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentEnd)) {
+        /* check nesting */
+        if (!cx->lint->controlCommentsIgnore &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
+                                         JSMSG_MISMATCH_CTRL_COMMENTS)) {
+            return JS_FALSE;
+        }
+        cx->lint->controlCommentsIgnore = JS_FALSE;
+    }
+    else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentOptionExplicit)) {
+        if (cx->lint->controlCommentsOptionExplicit) {
+            /* warn about duplicates */
+            if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_DUP_OPTION_EXPLICIT))
+                return JS_FALSE;
+        }
+        else if (cx->lint->hasCompletedPartialScript) {
+            /* warn about partial script that was missed */
+            if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_PARTIAL_OPTION_EXPLICIT))
+                return JS_FALSE;
+        }
+        else {
+            cx->lint->controlCommentsOptionExplicit = JS_TRUE;
+        }
+    }
+    else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentFallthru)) {
+        if (cx->lint->controlCommentsAllowFallthru && !cx->lint->controlCommentsHadFallthru)
+            cx->lint->controlCommentsHadFallthru = JS_TRUE;
+        else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU))
+            return JS_FALSE;
+    }
+    else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentImport)) {
+        if (jslCC->importPathPos && jslCC->importPathPos > jslCC->importPath) {
+            /* trim @ */
+            if (jslCC->isAtFormat) {
+                jslCC->importPathPos--;
+                *jslCC->importPathPos = 0;
+            }
+
+            /* trim trailing whitespace */
+            while (jslCC->importPathPos > jslCC->importPath && JS_ISSPACE(*(jslCC->importPathPos-1))) {
+                jslCC->importPathPos--;
+                *jslCC->importPathPos = 0;
+            }
+
+            /* trim leading whitespace */
+            jslCC->importPathPos = jslCC->importPath;
+            while (*jslCC->importPathPos && JS_ISSPACE(*jslCC->importPathPos))
+                jslCC->importPathPos++;
+
+            if (*jslCC->importPathPos) {
+                /* add the path to the list of files to import */
+                if (cx->lint->importPaths) {
+                    JSLImportPathList *newItem;
+                    newItem = JS_malloc(cx, sizeof(JSLImportPathList));
+                    JS_INIT_CLIST(&newItem->links);
+                    newItem->importPath = JS_strdup(cx, jslCC->importPath);
+                    JS_APPEND_LINK(&newItem->links, &cx->lint->importPaths->links);
+                }
+            }
+            else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, defaultErrNumber)) {
+                return JS_FALSE;
+            }
+        }
+        else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, defaultErrNumber)) {
+            return JS_FALSE;
+        }
+    }
+    else {
+        if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, defaultErrNumber))
+            return JS_FALSE;
+    }
+
+    return JS_TRUE;
+}
 
 JSTokenType
 js_GetToken(JSContext *cx, JSTokenStream *ts)
@@ -1310,146 +1505,27 @@ skipline:
             goto retry;
         }
         if (MatchChar(ts, '*')) {
-            JSBool startedControlComment, endedControlComment;
-            const char *controlCommentIgnore, *controlCommentEnd,
-                *controlCommentOptionExplicit, *controlCommentImport,
-                *controlCommentFallthru;
-            /*arbitrary size*/
-            char importPath[1024], *importPathPos;
+            JSLControlComment jslCC;
+            JSBool useCC = JS_FALSE;
 
-            importPathPos = importPath;
-            *importPathPos = 0;
-
-            if (cx->lint) {
-                controlCommentIgnore = "@ignore@";
-                controlCommentEnd = "@end@";
-                controlCommentOptionExplicit = "@option explicit@";
-                controlCommentImport = "@import ";
-                controlCommentFallthru = "@fallthru@";
-
-                startedControlComment = PeekChar(ts) == '@';
-            }
+            if (cx->lint)
+                useCC = js_StartControlComment(ts, &jslCC);
 
             while ((c = GetChar(ts)) != EOF &&
-                   !(c == '*' && MatchChar(ts, '/'))) {
-                /* Ignore all characters until comment close. */
+                !(c == '*' && MatchChar(ts, '/'))) {
 
-                if (cx->lint) {
-                    if (c == '/' && MatchChar(ts, '*') &&
-                        !js_ReportCompileErrorNumber(cx, ts, NULL,
-                                                     JSREPORT_WARNING |
-                                                     JSREPORT_STRICT,
-                                                     JSMSG_NESTED_COMMENT)) {
-                        goto error;
-                    }
+                /* check for nested comments */
+                if (c == '/' && MatchChar(ts, '*') &&
+                    !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                 JSREPORT_WARNING |
+                                                 JSREPORT_STRICT,
+                                                 JSMSG_NESTED_COMMENT)) {
+                    goto error;
+                }
 
-                    /* try to advance control comment */
-                    if (startedControlComment) {
-                        JSL_MATCH_COMMENT(controlCommentIgnore, c);
-                        JSL_MATCH_COMMENT(controlCommentEnd, c);
-                        JSL_MATCH_COMMENT(controlCommentOptionExplicit, c);
-                        JSL_MATCH_COMMENT(controlCommentFallthru, c);
-                        if (JSL_MATCHED_COMMENT(controlCommentImport)) {
-                            if (importPathPos && importPathPos - importPath < sizeof(importPath)-1) {
-                                *importPathPos++ = (char)c;
-                                *importPathPos = 0;
-                            }
-                            else {
-                                importPathPos = NULL;
-                            }
-                        }
-                        else {
-                            JSL_MATCH_COMMENT(controlCommentImport, c);
-                        }
-                    }
-
-                    endedControlComment = (c == '@');
-                }
-            }
-
-            if (cx->lint) {
-                if ((!startedControlComment && endedControlComment) ||
-                    (startedControlComment && !endedControlComment)) {
-                    /* looks like a control comment */
-                    if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_CONTROL_COMMENT))
-                        goto error;
-                }
-                else if (JSL_MATCHED_COMMENT(controlCommentIgnore)) {
-                    /* check nesting */
-                    if (cx->lint->controlCommentsIgnore &&
-                        !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
-                                                     JSMSG_MISMATCH_CTRL_COMMENTS))
-                    {
-                        goto error;
-                    }
-                    cx->lint->controlCommentsIgnore = JS_TRUE;
-                }
-                else if (JSL_MATCHED_COMMENT(controlCommentEnd)) {
-                    /* check nesting */
-                    if (!cx->lint->controlCommentsIgnore &&
-                        !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
-                                                     JSMSG_MISMATCH_CTRL_COMMENTS)) {
-                        goto error;
-                    }
-                    cx->lint->controlCommentsIgnore = JS_FALSE;
-                }
-                else if (JSL_MATCHED_COMMENT(controlCommentOptionExplicit)) {
-                    if (cx->lint->controlCommentsOptionExplicit) {
-                        /* warn about duplicates */
-                        if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_DUP_OPTION_EXPLICIT))
-                            goto error;
-                    }
-                    else if (cx->lint->hasCompletedPartialScript) {
-                        /* warn about partial script that was missed */
-                        if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_PARTIAL_OPTION_EXPLICIT))
-                            goto error;
-                    }
-                    else {
-                        cx->lint->controlCommentsOptionExplicit = JS_TRUE;
-                    }
-                }
-                else if (JSL_MATCHED_COMMENT(controlCommentFallthru)) {
-                    if (cx->lint->controlCommentsAllowFallthru && !cx->lint->controlCommentsHadFallthru)
-                        cx->lint->controlCommentsHadFallthru = JS_TRUE;
-                    else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU))
-                        goto error;
-                }
-                else if (JSL_MATCHED_COMMENT(controlCommentImport)) {
-                    if (importPathPos > importPath) {
-                        /* trim @ */
-                        importPathPos--;
-                        *importPathPos = 0;
-
-                        /* trim trailing whitespace */
-                        while (importPathPos > importPath && JS_ISSPACE(*(importPathPos-1))) {
-                            importPathPos--;
-                            *importPathPos = 0;
-                        }
-
-                        /* trim leading whitespace */
-                        importPathPos = importPath;
-                        while (*importPathPos && JS_ISSPACE(*importPathPos))
-                            importPathPos++;
-
-                        if (*importPathPos) {
-                            if (importPathPos && cx->lint->importCallback)
-                                cx->lint->importCallback(cx, importPath, cx->lint->importCallbackParms);
-                        }
-                        else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
-                                                             JSMSG_MISMATCH_CTRL_COMMENTS)) {
-                            goto error;
-                        }
-                    }
-                    else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING,
-                                                         JSMSG_MISMATCH_CTRL_COMMENTS)) {
-                        goto error;
-                    }
-                }
-                else if (startedControlComment && endedControlComment) {
-                    /* looked like a control comment */
-                    if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_CONTROL_COMMENT))
-                        goto error;
-                }
+                /* check for control comments */
+                if (useCC)
+                    js_ReadControlComment(cx, ts, &jslCC, c);
             }
 
             if (c == EOF) {
@@ -1457,6 +1533,10 @@ skipline:
                                             JSMSG_UNTERMINATED_COMMENT);
                 goto error;
             }
+
+            if (useCC && !js_ProcessControlComment(cx, ts, &jslCC))
+                goto error;
+
             goto retry;
         }
 

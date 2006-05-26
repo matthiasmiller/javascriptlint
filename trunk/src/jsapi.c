@@ -1075,7 +1075,8 @@ JS_SetGlobalObject(JSContext *cx, JSObject *obj)
 
 JS_PUBLIC_API(JSBool)
 JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
-                      JSBool alwaysUseOptionExplicit, JSLImportCallback importCallback, void *parms)
+                      JSBool alwaysUseOptionExplicit, JSBool lambdaAssignRequiresSemicolon,
+                      JSLImportCallback importCallback, void *parms)
 {
     JSLint *newLint;
     newLint = JS_malloc(cx, sizeof(JSLint));
@@ -1083,11 +1084,19 @@ JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectLi
         return JS_FALSE;
     memset(newLint, 0, sizeof(JSLint));
 
-    newLint->importCallback = importCallback;
-    newLint->importCallbackParms = parms;
+    if (importCallback) {
+        newLint->importCallback = importCallback;
+        newLint->importCallbackParms = parms;
+
+        newLint->importPaths = JS_malloc(cx, sizeof(JSLImportPathList));
+        JS_INIT_CLIST(&newLint->importPaths->links);
+        newLint->importPaths->importPath = 0;
+    }
+
     newLint->scriptIdentifiers = curScriptIdentifiers;
     newLint->dependencyList = dependencyIdentifiers;
     newLint->alwaysUseOptionExplicit = alwaysUseOptionExplicit;
+    newLint->lambdaAssignRequiresSemicolon = lambdaAssignRequiresSemicolon;
     newLint->down = cx->lint;
     cx->lint = newLint;
     return JS_TRUE;
@@ -1100,6 +1109,19 @@ JS_PopLintIdentifers(JSContext *cx)
     
     if (cx->lint) {
         prevLint = cx->lint->down;
+
+        /* free import paths */
+        if (cx->lint->importPaths) {
+            while (!JS_CLIST_IS_EMPTY(&cx->lint->importPaths->links)) {
+                JSLImportPathList *curPath;
+                curPath = (JSLImportPathList*)JS_LIST_HEAD(&cx->lint->importPaths->links);
+                JS_REMOVE_LINK(&curPath->links);
+                JS_free(cx, curPath->importPath);
+                JS_free(cx, curPath);
+            }
+            JS_free(cx, cx->lint->importPaths);
+        }
+
         JS_free(cx, cx->lint);
         cx->lint = prevLint;
     }

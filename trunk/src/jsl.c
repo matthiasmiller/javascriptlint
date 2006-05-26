@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1j"
+#define JSL_VERSION "0.1k"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -140,8 +140,7 @@ const char *placeholders[] = {
     ((errnum) == JSMSG_REDECLARED_VAR) || \
     ((errnum) == JSMSG_ANON_NO_RETURN_VALUE) || \
     ((errnum) == JSMSG_USELESS_EXPR)) && \
-    ((errnum) != JSMSG_UNDECLARED_IDENTIFIER) && \
-    ((errnum) != JSMSG_INVALID_CONTROL_COMMENT))
+    ((errnum) != JSMSG_UNDECLARED_IDENTIFIER))
 
 #define WARNING_PREFIX          "warning";
 #define STRICT_WARNING_PREFIX   "warning";
@@ -186,6 +185,7 @@ JSLScriptList gScriptList;
 
 /* settings */
 JSBool gAlwaysUseOptionExplicit = JS_FALSE;
+JSBool gLambdaAssignRequiresSemicolon = JS_TRUE;
 JSBool gRecurse = JS_FALSE;
 JSBool gShowContext = JS_TRUE;
 // Error format; this is the default for backward compatibility reasons
@@ -860,7 +860,8 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
     importParms.dependencies = &dependencies;
 
     if (JS_PushLintIdentifers(cx, scriptInfo->obj, &dependencies,
-                              gAlwaysUseOptionExplicit, ImportScript, &importParms)) {
+                              gAlwaysUseOptionExplicit, gLambdaAssignRequiresSemicolon,
+                              ImportScript, &importParms)) {
         tmp_result = ProcessScriptContents(cx, obj, GetFileTypeFromPath(filename), filename,
             contents, ImportScript, &importParms);
         JS_PopLintIdentifers(cx);
@@ -1331,7 +1332,7 @@ ProcessStdin(JSContext *cx, JSObject *obj)
     *contentsPos = 0;
 
     /* lint */
-    if (!JS_PushLintIdentifers(cx, NULL, NULL, JS_FALSE, NULL, NULL)) {
+    if (!JS_PushLintIdentifers(cx, NULL, NULL, JS_FALSE, JS_TRUE, NULL, NULL)) {
         JS_free(cx, contents);
         SetExitCode(EXITCODE_JS_ERROR);
         return JS_FALSE;
@@ -1355,7 +1356,7 @@ PrintConfErrName(const uintN number, const char *format)
     fputs(errorNames[number], stdout);
     chars = 1 + strlen(errorNames[number]);
 
-    while (chars < 25) {
+    while (chars < 30) {
         fputc(' ', stdout);
         chars++;
     }
@@ -1406,6 +1407,14 @@ PrintDefaultConf(void)
         "# Use \"+context\" to display or \"-context\" to suppress.\n"
         "#\n"
         "+context\n"
+        , stdout);
+
+    fputs(
+        "\n\n### Semicolons\n"
+        "# By default, assignments of an anonymous function to a variable or\n"
+        "# property (such as a function prototype) must be followed by a semicolon.\n"
+        "#\n"
+        "+lambda_assign_requires_semicolon\n"
         , stdout);
 
     fputs(
@@ -1636,7 +1645,10 @@ ProcessSettingErr_Garbage:
                 strncpy(gOutputFormat, linepos, sizeof(gOutputFormat)-1);
             }
             else if (strcasecmp(linepos, "always_use_option_explicit") == 0) {
-               gAlwaysUseOptionExplicit = enable;
+                gAlwaysUseOptionExplicit = enable;
+            }
+            else if (strcasecmp(linepos, "lambda_assign_requires_semicolon") == 0) {
+                gLambdaAssignRequiresSemicolon = enable;
             }
             else if (strncasecmp(linepos, "define", strlen("define")) == 0) {
                 jsval val;
