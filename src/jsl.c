@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.2.5"
+#define JSL_VERSION "0.2.6"
 #define JSL_DEVELOPED_BY "Developed by Matthias Miller (http://www.JavaScriptLint.com)"
 
 /* exit code values */
