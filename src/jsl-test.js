@@ -692,6 +692,17 @@ function SwitchStatements() {
         s = 0;
         break;
 
+      /* ok - not duplicated */
+      case 100000000:
+      case 100000001:
+        s = 1;
+        break;
+
+      /* mistake - duplicated */
+      case 100000000:
+        s = -1;
+        break;
+
       default:
         break;
     }

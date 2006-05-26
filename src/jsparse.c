@@ -1530,7 +1530,7 @@ AreExpressionsIdentical(JSContext *cx, JSParseNode *pn1, JSParseNode *pn2, JSBoo
     /* check values on numbers */
     if (pn1->pn_type == TOK_NUMBER)
     {
-        if (pn1->pn_num != pn2->pn_num)
+        if (pn1->pn_dval != pn2->pn_dval)
             return JS_FALSE;
     }
 

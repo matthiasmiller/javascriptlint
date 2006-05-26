@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1i"
+#define JSL_VERSION "0.1j"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -586,6 +586,16 @@ AddPathToList(JSLPathList *pathList, const char *path)
     JSLPathList *pathItem;
     pathItem = AllocPathListItem(path);
     JS_APPEND_LINK(&pathItem->links, &pathList->links);
+}
+
+static void
+FreePathList(JSContext *cx, JSLPathList *pathList)
+{
+    while (!JS_CLIST_IS_EMPTY(&pathList->links)) {
+        JSLPathList *curFileItem = (JSLPathList*)JS_LIST_HEAD(&pathList->links);
+        JS_REMOVE_LINK(&curFileItem->links);
+        JS_free(cx, curFileItem);
+    }
 }
 
 static JSLScriptList*
@@ -1275,6 +1285,67 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
     return JS_TRUE;
 }
 
+static JSBool
+ProcessStdin(JSContext *cx, JSObject *obj)
+{
+#define GROW_SIZE 10*1024
+
+    char *contentsPos, *contents;
+    int buffer_size;
+    JSBool success;
+
+    /* allocate buffer */
+    buffer_size = GROW_SIZE;
+    contents = (char*)JS_malloc(cx, buffer_size);
+    contentsPos = contents;
+
+    /* read data */
+    while ((*contentsPos = fgetc(stdin)) != EOF) {
+        contentsPos++;
+
+        if (contentsPos-contents+1/*NULL*/ >= buffer_size) {
+            /* NOTE: win32 was crashing over the JS_realloc call */
+            size_t prevOffset, prevSize;
+            char *prevContents;
+
+            /* save info about prev buffer */
+            prevOffset = contentsPos - contents;
+            prevSize = buffer_size;
+            prevContents = contents;
+
+            /* allocate to new buffer */
+            buffer_size += GROW_SIZE;
+            contents = JS_malloc(cx, buffer_size);
+            if (!contents) {
+                JS_free(cx, prevContents);
+                SetExitCode(EXITCODE_JS_ERROR);
+                return JS_FALSE;
+            }
+
+            /* restore old information */
+            memcpy(contents, prevContents, prevSize);
+            contentsPos = contents + prevOffset;
+            JS_free(cx, prevContents);
+        }
+    }
+    *contentsPos = 0;
+
+    /* lint */
+    if (!JS_PushLintIdentifers(cx, NULL, NULL, JS_FALSE, NULL, NULL)) {
+        JS_free(cx, contents);
+        SetExitCode(EXITCODE_JS_ERROR);
+        return JS_FALSE;
+    }
+
+    success = ProcessScriptContents(cx, obj, JSL_FILETYPE_UNKNOWN, NULL, contents, NULL, NULL);
+    JS_PopLintIdentifers(cx);
+    JS_free(cx, contents);
+
+    if (!success)
+        SetExitCode(EXITCODE_JS_ERROR);
+    return success;
+}
+
 static void
 PrintConfErrName(const uintN number, const char *format)
 {
@@ -1374,7 +1445,8 @@ static int
 usage(void)
 {
     fprintf(stdout, "\nJavaScript Lint %s (%s)\n", JSL_VERSION, JS_GetImplementationVersion());
-    fprintf(stdout, "usage: jsl [help:conf] [conf filename] [+recurse|-recurse] [process filename] [+context|-context]");
+    fprintf(stdout, "usage: jsl [help:conf] [conf filename] [process filename] [stdin]\n"
+        "\t[+recurse|-recurse] [+context|-context] [nologo] [nosummary]");
 #ifdef WIN32
     fprintf(stdout, " [pauseatend]");
 #endif
@@ -1418,7 +1490,7 @@ IsValidIdentifier(const char *identifier)
 }
 
 static int
-ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *processPaths)
+ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scriptPaths)
 {
     char filename[MAXPATHLEN+1];
     char line[MAX_CONF_LINE+1];
@@ -1440,8 +1512,6 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *proc
         OutputErrorMessage(filename, 0, 0, NULL, "can't open file", strerror(errno));
         return EXITCODE_FILE_ERROR;
     }
-
-    fprintf(stdout, "JavaScript Lint %s (%s)\n\n", JSL_VERSION, JS_GetImplementationVersion());
 
     ch = 0;
     lineno = 1;
@@ -1529,7 +1599,7 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *proc
                 if (linepos[0] && linepos[1]) goto ProcessSettingErr_Garbage;
                 *linepos = 0;
 
-                AddPathToList(processPaths, path);
+                AddPathToList(scriptPaths, path);
 
                 if (JS_FALSE) {
 ProcessSettingErr_MissingPath:
@@ -1655,61 +1725,98 @@ ProcessSettingErr_Garbage:
 static int
 ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
 {
-    JSBool hadConfig;
-    int i;
-    JSLPathList processPaths;
-    int result;
-    JS_INIT_CLIST(&processPaths.links);
-
-    result = 0;
+    int i, result;
+    /* command line should take precedence over config */
+    JSBool overrideRecurse, overrideShowContext;
+    JSBool argRecurse, argShowContext;
+    JSBool argPrintLogo, argPrintSummary, argUseStdin;
+    /* paths */
+    const char *configPath;
+    JSLPathList scriptPaths;
 
     if (!argc)
         return usage();
 
-    hadConfig = JS_FALSE;
+    result = 0;
+
+    overrideRecurse = JS_FALSE;
+    overrideShowContext = JS_FALSE;
+    argRecurse = JS_FALSE;
+    argShowContext = JS_FALSE;
+    argPrintLogo = JS_TRUE;
+    argPrintSummary = JS_TRUE;
+    argUseStdin = JS_FALSE;
+
+    configPath = NULL;
+    JS_INIT_CLIST(&scriptPaths.links);
+
+
     for (i = 0; i < argc; i++) {
         char *parm;
         parm = argv[i];
 
-        if (strcasecmp(parm, "+recurse") == 0) gRecurse = JS_TRUE;
-        else if (strcasecmp(parm, "-recurse") == 0) gRecurse = JS_FALSE;
-        else if (strcasecmp(parm, "+context") == 0) gShowContext = JS_TRUE;
-        else if (strcasecmp(parm, "-context") == 0) gShowContext = JS_FALSE;
+        if (strcasecmp(parm, "+recurse") == 0) {
+            overrideRecurse = JS_TRUE;
+            argRecurse = JS_TRUE;
+        }
+        else if (strcasecmp(parm, "-recurse") == 0) {
+            overrideRecurse = JS_TRUE;
+            argRecurse = JS_FALSE;
+        }
+        else if (strcasecmp(parm, "+context") == 0) {
+            overrideShowContext = JS_TRUE;
+            argShowContext = JS_TRUE;
+        }
+        else if (strcasecmp(parm, "-context") == 0) {
+            overrideShowContext = JS_TRUE;
+            argShowContext = JS_FALSE;
+        }
         else {
-            /* skip - and / */
-            if (*parm == '-' || *parm == '/')
+            /* skip / */
+            if (*parm == '/')
                 parm++;
+            /* skip - and -- */
+            else if (*parm == '-') {
+                parm++;
+                if (*parm == '-')
+                    parm++;
+            }
 
             if (strcasecmp(parm, "help:conf") == 0) {
                 PrintDefaultConf();
                 result = 0;
                 goto cleanup;
             }
+            else if (strcasecmp(parm, "nologo") == 0) {
+                argPrintLogo = JS_FALSE;
+            }
+            else if (strcasecmp(parm, "nosummary") == 0) {
+                argPrintSummary = JS_FALSE;
+            }
+            else if (strcasecmp(parm, "stdin") == 0) {
+                argUseStdin = JS_TRUE;
+            }
             else if (strcasecmp(parm, "conf") == 0 ||
                 strcasecmp(parm, "+conf") == 0) {
                 /* only allow one config */
-                if (hadConfig) {
+                if (configPath) {
                     fputs("Error: multiple configuration files.\n", stdout);
                     result = usage();
                     goto cleanup;
                 }
-                hadConfig = JS_TRUE;
 
-                if (++i < argc) {
-                    result = ProcessConf(cx, obj, argv[i], &processPaths);
-                    if (result)
-                        goto cleanup;
-                }
-                else {
+                if (++i >= argc) {
                     fprintf(stdout, "Error: missing configuration path\n");
                     result = usage();
                     goto cleanup;
                 }
+
+                configPath = argv[i];
             }
             else if (strcasecmp(parm, "process") == 0 ||
                 strcasecmp(parm, "+process") == 0) {
                 if (++i < argc)
-                    AddPathToList(&processPaths, argv[i]);
+                    AddPathToList(&scriptPaths, argv[i]);
                 else {
                     fprintf(stdout, "Error: missing file path to process\n");
                     result = usage();
@@ -1729,25 +1836,48 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
         }
     }
 
-    /* delete items from the array as they're processed */
-    while (!JS_CLIST_IS_EMPTY(&processPaths.links)) {
-        JSLPathList *curFileItem = (JSLPathList*)JS_LIST_HEAD(&processPaths.links);
-        ProcessScripts(cx, obj, curFileItem->path);
-        JS_REMOVE_LINK(&curFileItem->links);
-        JS_free(cx, curFileItem);
+    /* stdin is exclusive! */
+    if (argUseStdin && !JS_CLIST_IS_EMPTY(&scriptPaths.links)) {
+        fputs("Error: cannot process other scripts when reading from stdin\n", stdout);
+        result = usage();
+        goto cleanup;
     }
 
-    fprintf(stdout, "\n%i error(s), %i warning(s)\n", gNumErrors, gNumWarnings);
+    if (argPrintLogo)
+        fprintf(stdout, "JavaScript Lint %s (%s)\n\n", JSL_VERSION, JS_GetImplementationVersion());
+
+    if (configPath) {
+        result = ProcessConf(cx, obj, configPath, &scriptPaths);
+        if (result)
+            goto cleanup;
+    }
+
+    /* handle command-line overrides */
+    if (overrideRecurse)
+        gRecurse = argRecurse;
+    if (overrideShowContext)
+        gShowContext = argShowContext;
+
+    if (argUseStdin) {
+        ProcessStdin(cx, obj);
+    }
+    else {
+        /* delete items from the array as they're processed */
+        while (!JS_CLIST_IS_EMPTY(&scriptPaths.links)) {
+            JSLPathList *curFileItem = (JSLPathList*)JS_LIST_HEAD(&scriptPaths.links);
+            ProcessScripts(cx, obj, curFileItem->path);
+            JS_REMOVE_LINK(&curFileItem->links);
+            JS_free(cx, curFileItem);
+        }
+    }
+
+    if (argPrintSummary)
+        fprintf(stdout, "\n%i error(s), %i warning(s)\n", gNumErrors, gNumWarnings);
     return gExitCode;
 
 cleanup:
     /* delete items */
-    while (!JS_CLIST_IS_EMPTY(&processPaths.links)) {
-        JSLPathList *curFileItem = (JSLPathList*)JS_LIST_HEAD(&processPaths.links);
-        JS_REMOVE_LINK(&curFileItem->links);
-        JS_free(cx, curFileItem);
-    }
-
+    FreePathList(cx, &scriptPaths);
     return result;
 }
 
@@ -1827,7 +1957,7 @@ my_ErrorReporter(JSContext *cx, const char *message, JSErrorReport *report)
         prefix = NULL;
     }
 
-    /* oolno is 1-based */
+    /* colno is 1-based */
     colno = 0;
     if (report->linebuf)
         colno = PTRDIFF(report->tokenptr, report->linebuf, char)+1;
@@ -1947,53 +2077,7 @@ main(int argc, char **argv, char **envp)
 
     JS_ToggleOptions(cx, JSOPTION_STRICT);
 
-    if (getenv("SERVER_SOFTWARE")) {
-        int len;
-        char *contentsPos, *contents;
-
-        /* tweak global settings */
-        gShowContext = JS_FALSE;
-
-        #define MSG_DEF(name, number, count, exception, format) showErrMsgs[number] = JS_TRUE;
-        #include "js.msg"
-        #undef MSG_DEF
-
-        showErrMsgs[JSMSG_MISSING_OPTION_EXPLICIT] = JS_FALSE;
-
-        strcpy(gOutputFormat, "__LINE__,__COL__,__ERROR_NAME__,__ERROR_PREFIX__,__ERROR_MSGENC__");
-
-        result = 0;
-        fputs("Content-Type: text\r\n\r\n", stdout);
-
-        fputs("Start\r\n", stdout);
-        if (!getenv("CONTENT_LENGTH") ||
-            !(len = atoi(getenv("CONTENT_LENGTH")))) {
-            fputs("Error", stdout);
-            result = 1;
-        }
-        else if (JS_PushLintIdentifers(cx, NULL, NULL, JS_FALSE, NULL, NULL)) {
-            /* read */
-            contents = (char*)JS_malloc(cx, len+1);
-            contentsPos = contents;
-            while ((*contentsPos = fgetc(stdin)) != EOF)
-                contentsPos++;
-            *contentsPos = 0;
-
-            /* lint */
-            if (!ProcessScriptContents(cx, glob, JSL_FILETYPE_UNKNOWN, NULL, contents, NULL, NULL))
-                result = 1;
-            JS_PopLintIdentifers(cx);
-
-            JS_free(cx, contents);
-            fputs("Done", stdout);
-        }
-        else {
-            fputs("Error", stdout);
-        }
-    }
-    else {
-        result = ProcessArgs(cx, glob, argv, argc);
-    }
+    result = ProcessArgs(cx, glob, argv, argc);
 
     FreeErrNames(cx);
     JS_DestroyContext(cx);
