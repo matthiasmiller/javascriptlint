@@ -81,7 +81,7 @@
 #include <conio.h>
 #endif
 
-#define JSL_VERSION "0.1b"
+#define JSL_VERSION "0.1c"
 
 /* exit code values */
 #define EXITCODE_JS_WARNING 1
@@ -385,8 +385,7 @@ JSL_RealPath(const char *path, char *resolved_path)
     /* get the folder name */
     file = GetFileName(path);
     folder = JS_smprintf("%s%c", path, DEFAULT_DIRECTORY_SEPARATOR);
-    folder[file - path] = DEFAULT_DIRECTORY_SEPARATOR;
-    folder[file - path + 1] = 0;
+    folder[file - path] = 0;
 
     resolved = realpath(folder, resolved_path);
     JS_smprintf_free(folder);
@@ -1147,8 +1146,7 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
     /* get the folder name */
     file = GetFileName(relpath);
     folder = JS_smprintf("%s%c", relpath, DEFAULT_DIRECTORY_SEPARATOR);
-    folder[file - relpath] = DEFAULT_DIRECTORY_SEPARATOR;
-    folder[file - relpath + 1] = 0;
+    folder[file - relpath] = 0;
 
     /* resolve relative paths */
     if (!JSL_RealPath(relpath, path)) {
@@ -1156,6 +1154,12 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
         SetExitCode(EXITCODE_FILE_ERROR);
         return JS_FALSE;
 	}
+
+    /* get the full folder name */
+    file = GetFileName(path);
+    JS_smprintf_free(folder);
+    folder = JS_smprintf("%s%c", path, DEFAULT_DIRECTORY_SEPARATOR);
+    folder[file - path] = 0;
 
     if (strchr(file, '?') != NULL || strchr(file, '*') != NULL) {
         /* this has wildcards, so do a search on this path */
@@ -1217,7 +1221,7 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
                 JS_free(cx, tmp);
             }
         }
-        else if (PathMatchesWildcards(cur->d_name, file)) {
+        else if (PathMatchesWildcards(file, cur->d_name)) {
             /* process script */
             ProcessSingleScript(cx, obj, curPath, NULL);
         }
