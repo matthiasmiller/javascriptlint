@@ -1,11 +1,11 @@
 <?php
-    /* This script assumes the following configuration settings:
-     *   +output-format __LINE__,__COL__,__ERROR_NAME__,__ERROR_PREFIX__,__ERROR_MSGENC__
-     *
-     * Example Code:
+    /* JavaScript Lint
+	 * Developed by Matthias Miller (http://www.JavaScriptLint.com/) 
+	 *
+	 * Example Usage:
      *      require_once("_jsl_online.php");
      *      $engine = new JSLEngine('.priv/jsl', '.priv/jsl.server.conf');
-     *      $result = $engine->Lint($g_sScript);
+     *      $result = $engine->Lint($code);
      *      if ($result === true)
      *          OutputLintHTML($engine);
      *      else
@@ -28,7 +28,7 @@
                 $this->_char = is_numeric($info[1]) ? ($info[1]*1) : -1;
                 $this->_errname = $info[2];
                 $this->_type = $info[3];
-                $this->_message = implode(",", array_slice($info, 4));
+                $this->_message = stripcslashes(implode(",", array_slice($info, 4)));
             }
         }
 
@@ -114,7 +114,10 @@
             );
 
             /* launch process */
-            $path = escapeshellcmd($this->_binarypath) . ' --nologo --nosummary --stdin -context --conf ' . escapeshellarg($this->_confpath);
+            $path = escapeshellcmd($this->_binarypath);
+			$path .= ' --nologo --nosummary --nocontext --stdin';
+			$path .= ' --conf ' . escapeshellarg($this->_confpath);
+			$path .= ' -output-format __LINE__,__COL__,__ERROR_NAME__,__ERROR_PREFIX__,__ERROR_MSGENC__';
             $process = proc_open($path, $descriptorspec, $pipes);
             if (!is_resource($process))
                 return false;
@@ -201,7 +204,7 @@
                 echo $lineNoSpacer . '<span>';
                 if ($Error->getType())
                     echo htmlentities($Error->getType()) . ': ';
-                echo htmlentities(str_replace("\\n", "<br/>", $Error->getMessage()));
+                echo htmlentities(str_replace("\n", "<br/>", $Error->getMessage()));
                 echo '</span>' . "\n";
 
                 echo '</div>';
