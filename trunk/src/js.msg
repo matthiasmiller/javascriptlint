@@ -284,3 +284,4 @@ MSG_DEF(JSMSG_DEFAULT_NOT_AT_END,     201, 0, JSEXN_SYNTAXERR, "the default case
 MSG_DEF(JSMSG_LEGACY_CC_NOT_UNDERSTOOD,202, 0, JSEXN_SYNTAXERR, "couldn't understand control comment using /*@keyword@*/ syntax")
 MSG_DEF(JSMSG_JSL_CC_NOT_UNDERSTOOD,  203, 0, JSEXN_SYNTAXERR, "couldn't understand control comment using /*jsl:keyword*/ syntax")
 MSG_DEF(JSMSG_USELESS_COMPARISON,     204, 0, JSEXN_SYNTAXERR, "useless comparison; comparing identical expressions")
+MSG_DEF(JSMSG_WITH_STATEMENT,         205, 0, JSEXN_SYNTAXERR, "with statement hides undeclared variables; use temporary variable instead")
