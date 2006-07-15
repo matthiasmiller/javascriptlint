@@ -1330,7 +1330,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 {
     JSParseNode *pn, *pn2;
     JSTokenType tt;
-    JSBool hadtoken;
+    JSBool hadtoken, foundPass;
     JSBool beyondreach, alreadywarnedunreachable;
 
     CHECK_RECURSION();
@@ -1342,8 +1342,21 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
     ts->flags |= TSF_OPERAND;
     hadtoken = JS_FALSE;
+    foundPass = JS_FALSE;
     beyondreach = JS_FALSE;
     alreadywarnedunreachable = JS_FALSE;
+
+    /* Check for the "pass" keyword when the next token is scanned.
+     */
+    if (cx->lint && tc->topStmt) {
+        cx->lint->controlCommentsAllowPass = JS_TRUE;
+        cx->lint->controlCommentsFoundPass = JS_FALSE;
+        tt = js_PeekToken(cx, ts);
+        foundPass = cx->lint->controlCommentsFoundPass;
+        cx->lint->controlCommentsAllowPass = JS_FALSE;
+        cx->lint->controlCommentsFoundPass = JS_FALSE;
+    }
+
     while ((tt = js_PeekToken(cx, ts)) > TOK_EOF && tt != TOK_RC) {
         if (beyondreach && !alreadywarnedunreachable) {
             alreadywarnedunreachable = JS_TRUE;
@@ -1354,6 +1367,9 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 return NULL;
             }
         }
+
+        if (foundPass && !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_PASS))
+            return NULL;
  
         hadtoken = JS_TRUE;
         beyondreach = (beyondreach || tt == TOK_BREAK || tt == TOK_CONTINUE || tt == TOK_RETURN || tt == TOK_THROW);
@@ -1414,7 +1430,7 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         return NULL;
 
     /* empty catch is useful */
-    if (cx->lint && !hadtoken && tc->topStmt && tc->topStmt->type != STMT_CATCH) {
+    if (cx->lint && !hadtoken && !foundPass && tc->topStmt && tc->topStmt->type != STMT_CATCH) {
         if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING | JSREPORT_STRICT,
                                          JSMSG_EMPTY_STATEMENT)) {

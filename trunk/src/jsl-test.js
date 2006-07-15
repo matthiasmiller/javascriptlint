@@ -805,10 +805,18 @@ function empty_statement() {
 
     /* empty statement within while; useless expression */
     while (false);
-    while (false) {}
+    while (false) /*jsl:pass*/;
+    while (false) {
+    }
+    while (false) {
+        /*jsl:pass*/
+    }
 
     /* empty block within for; useless expression */
     for (i = 0; i < 2; i += 1) {
+    }
+    for (i = 0; i < 2; i += 1) {
+        /*jsl:pass*/
     }
 
     /* legal: empty catch statement */

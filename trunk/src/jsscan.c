@@ -806,6 +806,7 @@ typedef struct JSLControlComment
     const char *controlCommentOptionExplicit;
     const char *controlCommentImport;
     const char *controlCommentFallthru;
+    const char *controlCommentPass;
 
     /*arbitrary size*/
     char importPath[1024];
@@ -885,6 +886,7 @@ js_StartControlComment(JSTokenStream *ts, JSLint *lint, JSLControlComment *jslCC
     jslCC->controlCommentOptionExplicit = "option explicit";
     jslCC->controlCommentImport = "import ";
     jslCC->controlCommentFallthru = "fallthru";
+    jslCC->controlCommentPass = "pass";
     jslCC->importPath[0] = 0;
     jslCC->importPathPos = jslCC->importPath;
     return JS_TRUE;
@@ -899,6 +901,7 @@ js_ReadControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *jslCC
     js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentEnd, c);
     js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentOptionExplicit, c);
     js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentFallthru, c);
+    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentPass, c);
     if (js_MatchedPartialControlComment(jslCC, jslCC->controlCommentImport)) {
         if (jslCC->importPathPos && jslCC->importPathPos - jslCC->importPath < sizeof(jslCC->importPath)-1) {
             *jslCC->importPathPos++ = (char)c;
@@ -962,6 +965,12 @@ js_ProcessControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *js
         if (cx->lint->controlCommentsAllowFallthru && !cx->lint->controlCommentsHadFallthru)
             cx->lint->controlCommentsHadFallthru = JS_TRUE;
         else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU))
+            return JS_FALSE;
+    }
+    else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentPass)) {
+        if (cx->lint->controlCommentsAllowPass && !cx->lint->controlCommentsFoundPass)
+            cx->lint->controlCommentsFoundPass = JS_TRUE;
+        else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_PASS))
             return JS_FALSE;
     }
     else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentImport)) {
