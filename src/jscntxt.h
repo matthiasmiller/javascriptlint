@@ -358,6 +358,8 @@ typedef struct JSLint {
     JSBool              controlCommentsOptionExplicit;
     JSBool              controlCommentsAllowFallthru;
     JSBool              controlCommentsHadFallthru;
+    JSBool              controlCommentsAllowPass;
+    JSBool              controlCommentsFoundPass;
 
     struct JSLint       *down;
 } JSLint;
