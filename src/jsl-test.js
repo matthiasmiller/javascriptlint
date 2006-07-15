@@ -44,6 +44,14 @@ function SpiderMonkey() {
             this.x = this.y;
         }
 
+        with (o) {
+            /* should not warn about undeclared identifier */
+            some_variable = another_variable;
+            if (o) {
+                second_value = first_variable;
+            }
+        }
+
         /* illegal - getter/setter is deprecated */
         Array.bogon getter = function () {
             return "";

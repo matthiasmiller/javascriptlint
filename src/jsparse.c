@@ -464,6 +464,16 @@ MarkIfDeclared(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc, JSParseNode 
         return JS_TRUE;
     }
 
+    /* must ignore all variables within "with" blocks */
+    curstmt = tc->topStmt;
+    while (curstmt) {
+        if (curstmt->type == STMT_WITH) {
+            pn->pn_attrs |= JSPROP_LINT_IGNORE;
+            return JS_TRUE;
+        }
+        curstmt = curstmt->down;
+    }
+
     if (scope) {
         /* Find the topmost object in the scope chain. */
         do {
@@ -2403,8 +2413,7 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
       case TOK_WITH:
         if (!js_ReportCompileErrorNumber(cx, ts, NULL,
                                          JSREPORT_WARNING | JSREPORT_STRICT,
-                                         JSMSG_DEPRECATED_USAGE,
-                                         js_with_statement_str)) {
+                                         JSMSG_WITH_STATEMENT)) {
             return NULL;
         }
 
