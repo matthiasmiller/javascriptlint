@@ -1934,21 +1934,9 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 if (tt == TOK_ERROR)
                     return NULL;
 
-                /* check for misused fallthru */
-                if (cx->lint && cx->lint->controlCommentsHadFallthru &&
-                    !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU)) {
-                    return NULL;
-                }
-
                 pn5 = Statement(cx, ts, tc);
                 if (!pn5)
                     return NULL;
-
-                /* check for misused fallthru */
-                if (cx->lint && cx->lint->controlCommentsHadFallthru &&
-                    !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_FALLTHRU)) {
-                    return NULL;
-                }
 
                 pn4->pn_pos.end = pn5->pn_pos.end;
                 PN_APPEND(pn4, pn5);

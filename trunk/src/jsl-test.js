@@ -986,6 +986,22 @@ function missing_default_case() {
         break;
     }
 
+    /* ok - intended use of fallthru */
+    switch(i) {
+      case 1:
+        try {
+            i++;
+        }
+        catch(e)
+        {}
+        /*jsl:fallthru*/
+      case 2:
+        i--;
+        break;
+      default:
+        break;
+    }
+
     return "";
 }
 
