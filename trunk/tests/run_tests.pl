@@ -36,7 +36,7 @@ foreach my $filename (@files) {
 
 	# run the lint
 	print "Testing $filename...\n";
-	my $results = `$jsl_path --conf .jsl.conf --process $full_path --nologo --nofilelisting --nocontext --nosummary -output-format __LINE__,__ERROR_NAME__`;
+	my $results = `$jsl_path --conf $conf_path --process $full_path --nologo --nofilelisting --nocontext --nosummary -output-format __LINE__,__ERROR_NAME__`;
 	unlink $conf_path;
 	die "Error executing $jsl_path" unless defined $results;
 

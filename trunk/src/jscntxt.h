@@ -351,6 +351,7 @@ typedef struct JSLint {
     JSBool              enableLegacyControlComments;
 
     JSBool              hasCompletedPartialScript;
+    JSBool              allowIncDec;
 
     /* control comments */
     JSBool              controlCommentsIgnoreAll;

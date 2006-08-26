@@ -1274,50 +1274,61 @@ FunctionExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 #endif
 
 static JSBool
-checkIncDec(JSParseNode *pn)
+isIncDec(JSParseNode *pn)
+{
+    return pn && pn->pn_arity == PN_UNARY &&
+            (pn->pn_type == TOK_INC || pn->pn_type == TOK_DEC);
+}
+
+static JSBool
+hasIncDec(JSParseNode *pn)
 {
     JSParseNode *pn2;
 
     if (!pn)
-        return JS_TRUE;
-
-    if (pn->pn_type == TOK_FOR && pn->pn_arity == PN_BINARY &&
-        pn->pn_left && pn->pn_left->pn_type == TOK_RESERVED && pn->pn_left->pn_arity == PN_TERNARY &&
-        pn->pn_left->pn_kid3 && (pn->pn_left->pn_kid3->pn_type == TOK_INC || pn->pn_left->pn_kid3->pn_type == TOK_DEC)) {
-        /* check the third statement in a for loop */
-        return JS_TRUE;
-    }
-    else if (pn->pn_type == TOK_SEMI && pn->pn_arity == PN_UNARY && pn->pn_kid &&
-        pn->pn_kid->pn_arity == PN_UNARY &&
-        (pn->pn_kid->pn_type == TOK_INC || pn->pn_kid->pn_type == TOK_DEC)) {
-        /* check simple expressions */
-        return JS_TRUE;
-    }
-    else if (pn->pn_type == TOK_INC || pn->pn_type == TOK_DEC) {
-        /* disallow all other uses */
         return JS_FALSE;
-    }
 
+    if (isIncDec(pn))
+        return JS_TRUE;
+    
     switch (pn->pn_arity) {
       case PN_LIST:
         for (pn2 = pn->pn_head; pn2; pn2 = pn2->pn_next) {
-            if (!checkIncDec(pn2))
-                return JS_FALSE;
+            if (pn->pn_type == TOK_COMMA && isIncDec(pn2))
+                continue;
+            if (hasIncDec(pn2))
+                return JS_TRUE;
         }
-        return JS_TRUE;
+        return JS_FALSE;
       case PN_TERNARY:
-        return checkIncDec(pn->pn_kid1) &&
-               checkIncDec(pn->pn_kid2) &&
-               checkIncDec(pn->pn_kid3);
+        return hasIncDec(pn->pn_kid1) ||
+               hasIncDec(pn->pn_kid2) ||
+               hasIncDec(pn->pn_kid3);
       case PN_BINARY:
-        return checkIncDec(pn->pn_left) && checkIncDec(pn->pn_right);
+        return hasIncDec(pn->pn_left) || hasIncDec(pn->pn_right);
       case PN_UNARY:
-        return checkIncDec(pn->pn_kid);
+        return hasIncDec(pn->pn_kid);
       case PN_NAME:
-        return checkIncDec(pn->pn_expr);
+        return hasIncDec(pn->pn_expr);
       default:
-        return JS_TRUE;
+        return JS_FALSE;
     }
+}
+
+static JSBool
+warnIfHasIncDec(JSContext *cx, JSTokenStream *ts, JSParseNode *pn)
+{
+    if (!hasIncDec(pn))
+        return JS_TRUE;
+
+    if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                     JSREPORT_WARNING |
+                                     JSREPORT_STRICT,
+                                     JSMSG_INC_DEC_WITHIN_STMT)) {
+        return JS_FALSE;
+    }
+    
+    return JS_TRUE;
 }
 
 /*
@@ -1377,15 +1388,6 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         pn2 = Statement(cx, ts, tc);
         if (!pn2)
             return NULL;
-
-        if (cx->lint && !checkIncDec(pn2)) {
-            if (!js_ReportCompileErrorNumber(cx, ts, NULL,
-                                         JSREPORT_WARNING |
-                                         JSREPORT_STRICT,
-                                         JSMSG_INC_DEC_WITHIN_STMT)) {
-                return NULL;
-            }
-        }
 
         ts->flags |= TSF_OPERAND;
 
@@ -2153,7 +2155,14 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 pn3 = NULL;
             } else {
                 tc->flags |= TCF_IN_FOR_POST;
+                if (cx->lint)
+                    cx->lint->allowIncDec = JS_TRUE;
                 pn3 = Expr(cx, ts, tc);
+                if (cx->lint) {
+                    cx->lint->allowIncDec = JS_FALSE;
+                    if (!isIncDec(pn3) && !warnIfHasIncDec(cx, ts, pn3))
+                        return NULL;
+                }
                 tc->flags &= ~TCF_IN_FOR_POST;
                 if (!pn3)
                     return NULL;
@@ -2543,9 +2552,20 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
       default:
         js_UngetToken(ts);
+
+        if (cx->lint)
+            cx->lint->allowIncDec = JS_TRUE;
         pn2 = Expr(cx, ts, tc);
+        if (cx->lint)
+            cx->lint->allowIncDec = JS_FALSE;
+
         if (!pn2)
             return NULL;
+
+        if (cx->lint) {
+            if (!isIncDec(pn2) && !warnIfHasIncDec(cx, ts, pn2))
+                return NULL;
+        }
 
         if (js_PeekToken(cx, ts) == TOK_COLON) {
             if (pn2->pn_type != TOK_NAME) {
@@ -2929,6 +2949,9 @@ AssignExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 
     pn = CondExpr(cx, ts, tc);
     if (!pn)
+        return NULL;
+    
+    if (cx->lint && !cx->lint->allowIncDec && !warnIfHasIncDec(cx, ts, pn))
         return NULL;
 
     tt = js_GetToken(cx, ts);
