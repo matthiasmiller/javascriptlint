@@ -13,16 +13,23 @@ function inc_dec_within_stmt() {
     for (i = 10; i > 0; i--) {
         s = i;
     }
+    for(i = 0; i < 5; i++, i--) {
+        i++;
+    }
     for(i = 0; i < 5; ) {
-      i++;
+        i++;
+    }
+
+    for (i = 0; i < 5; i = ++i) { /*warning:inc_dec_within_stmt*/
+        /*jsl:pass*/
     }
 
     /* illegal */
-    switch (i--) 
+    switch (i--) /*warning:inc_dec_within_stmt*/ 
     {
     default:
         break;
-    } /*warning:inc_dec_within_stmt*/
+    }
 
     /* illegal */
     s = new String(i++); /*warning:inc_dec_within_stmt*/
