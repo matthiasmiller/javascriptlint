@@ -1664,13 +1664,9 @@ AreExpressionsIdentical(JSContext *cx, JSParseNode *pn1, JSParseNode *pn2, JSBoo
             AreExpressionsIdentical(cx, pn1->pn_kid2, pn2->pn_kid2, functionsAreIdentical) &&
             AreExpressionsIdentical(cx, pn1->pn_kid3, pn2->pn_kid3, functionsAreIdentical);
       case PN_BINARY:
-        if (pn1->pn_val != pn2->pn_val)
-            return JS_FALSE;
         return AreExpressionsIdentical(cx, pn1->pn_left, pn2->pn_left, functionsAreIdentical) &&
             AreExpressionsIdentical(cx, pn1->pn_right, pn2->pn_right, functionsAreIdentical);
       case PN_UNARY:
-        if (pn1->pn_val != pn2->pn_val)
-            return JS_FALSE;
         return AreExpressionsIdentical(cx, pn1->pn_kid, pn2->pn_kid, functionsAreIdentical);
       case PN_NAME:
         return AreExpressionsIdentical(cx, pn1->pn_expr, pn2->pn_expr, functionsAreIdentical);
