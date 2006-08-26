@@ -3641,6 +3641,12 @@ PrimaryExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 tt = js_PeekToken(cx, ts);
                 ts->flags &= ~TSF_OPERAND;
                 if (tt == TOK_RB) {
+                    if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+                                                     JSREPORT_WARNING |
+                                                     JSREPORT_STRICT,
+                                                     JSMSG_TRAILING_COMMA_IN_ARRAY)) {
+                        return NULL;
+                    }
                     pn->pn_extra |= PNX_ENDCOMMA;
                     break;
                 }
