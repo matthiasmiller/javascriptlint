@@ -43,6 +43,7 @@ foreach my $filename (@files) {
 	my $this_passed = 1;
 	foreach my $result (split("\n", $results)) {
 		my ($line, $error) = split(",", $result);
+		next unless $error; # for now, skip blank errors (such as inability to open file)
 
 		# some warnings point beyond the end of the file
 		$line = scalar(@contents) if $line > scalar(@contents);
