@@ -809,13 +809,45 @@ typedef struct JSLControlComment
     const char *controlCommentPass;
 
     /*arbitrary size*/
-    char importPath[1024];
-    char *importPathPos;
+    char value[1024];
+    char *valuePos;
 } JSLControlComment;
 
-void
-js_MatchNextControlCommentChar(JSLControlComment *jslCC, const char **strp, int32 c)
+JSBool
+js_MatchedPartialControlComment(JSLControlComment *jslCC, const char *str)
 {
+    /* matched if pointing to null terminator */
+    return str && !*str;
+}
+
+JSBool
+js_MatchedEntireControlComment(JSLControlComment *jslCC, const char *str)
+{
+    if (!js_MatchedPartialControlComment(jslCC, str))
+        return JS_FALSE;
+    
+    /* require final '@' */
+    if (jslCC->isAtFormat && !jslCC->endedWithAt)
+        return JS_FALSE;
+    
+    return JS_TRUE;
+}
+
+void
+js_MatchNextControlCommentChar(JSLControlComment *jslCC, JSBool allowValue, const char **strp, int32 c)
+{
+    /* check for a value that needs to be processed */
+    if (allowValue && js_MatchedPartialControlComment(jslCC, jslCC->controlCommentImport)) {
+        if (jslCC->valuePos && jslCC->valuePos - jslCC->value < sizeof(jslCC->value)-1) {
+            *jslCC->valuePos++ = (char)c;
+            *jslCC->valuePos = 0;
+        }
+        else {
+            jslCC->valuePos = NULL;
+        }
+        return;
+    }
+
     if (*strp) {
         if (jslCC->isAtFormat && c == '@' && !jslCC->endedWithAt) {
             /*
@@ -832,26 +864,6 @@ js_MatchNextControlCommentChar(JSLControlComment *jslCC, const char **strp, int3
             *strp = 0;
         }
     }
-}
-
-JSBool
-js_MatchedPartialControlComment(JSLControlComment *jslCC, const char *str)
-{
-    /* matched if pointing to null terminator */
-    return str && !*str;
-}
-
-JSBool
-js_MatchedEntireControlComment(JSLControlComment *jslCC, const char *str)
-{
-    if (!js_MatchedPartialControlComment(jslCC, str))
-        return JS_FALSE;
-
-    /* require final '@' */
-    if (jslCC->isAtFormat && !jslCC->endedWithAt)
-        return JS_FALSE;
-
-    return JS_TRUE;
 }
 
 JSBool
@@ -887,8 +899,8 @@ js_StartControlComment(JSTokenStream *ts, JSLint *lint, JSLControlComment *jslCC
     jslCC->controlCommentImport = "import ";
     jslCC->controlCommentFallthru = "fallthru";
     jslCC->controlCommentPass = "pass";
-    jslCC->importPath[0] = 0;
-    jslCC->importPathPos = jslCC->importPath;
+    jslCC->value[0] = 0;
+    jslCC->valuePos = jslCC->value;
     return JS_TRUE;
 }
 
@@ -896,25 +908,14 @@ void
 js_ReadControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *jslCC, int32 c)
 {
     /* try to advance control comment */
-    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentIgnoreAll, c);
-    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentIgnore, c);
-    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentEnd, c);
-    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentOptionExplicit, c);
-    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentFallthru, c);
-    js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentPass, c);
-    if (js_MatchedPartialControlComment(jslCC, jslCC->controlCommentImport)) {
-        if (jslCC->importPathPos && jslCC->importPathPos - jslCC->importPath < sizeof(jslCC->importPath)-1) {
-            *jslCC->importPathPos++ = (char)c;
-            *jslCC->importPathPos = 0;
-        }
-        else {
-            jslCC->importPathPos = NULL;
-        }
-    }
-    else {
-        js_MatchNextControlCommentChar(jslCC, &jslCC->controlCommentImport, c);
-    }
-
+    js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentIgnoreAll, c);
+    js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentIgnore, c);
+    js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentEnd, c);
+    js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentOptionExplicit, c);
+    js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentFallthru, c);
+    js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentPass, c);
+    js_MatchNextControlCommentChar(jslCC, JS_TRUE, &jslCC->controlCommentImport, c);
+    
     jslCC->endedWithAt = (c == '@');
 }
 
@@ -923,6 +924,29 @@ js_ProcessControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *js
 {
     uintN defaultErrNumber;
     defaultErrNumber = jslCC->isAtFormat ? JSMSG_LEGACY_CC_NOT_UNDERSTOOD : JSMSG_JSL_CC_NOT_UNDERSTOOD;
+
+    /* check for oversized control comments */
+    if (!jslCC->valuePos)
+        return js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, defaultErrNumber);
+
+    if (jslCC->valuePos > jslCC->value) {
+        /* trim @ */
+        if (jslCC->isAtFormat) {
+            jslCC->valuePos--;
+            *jslCC->valuePos = 0;
+        }
+
+        /* trim trailing whitespace */
+        while (jslCC->valuePos > jslCC->value && JS_ISSPACE(*(jslCC->valuePos-1))) {
+            jslCC->valuePos--;
+            *jslCC->valuePos = 0;
+        }
+
+        /* trim leading whitespace */
+        jslCC->valuePos = jslCC->value;
+        while (*jslCC->valuePos && JS_ISSPACE(*jslCC->valuePos))
+            jslCC->valuePos++;
+    }
 
     if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentIgnoreAll)) {
         cx->lint->controlCommentsIgnoreAll = JS_TRUE;
@@ -974,36 +998,14 @@ js_ProcessControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *js
             return JS_FALSE;
     }
     else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentImport)) {
-        if (jslCC->importPathPos && jslCC->importPathPos > jslCC->importPath) {
-            /* trim @ */
-            if (jslCC->isAtFormat) {
-                jslCC->importPathPos--;
-                *jslCC->importPathPos = 0;
-            }
-
-            /* trim trailing whitespace */
-            while (jslCC->importPathPos > jslCC->importPath && JS_ISSPACE(*(jslCC->importPathPos-1))) {
-                jslCC->importPathPos--;
-                *jslCC->importPathPos = 0;
-            }
-
-            /* trim leading whitespace */
-            jslCC->importPathPos = jslCC->importPath;
-            while (*jslCC->importPathPos && JS_ISSPACE(*jslCC->importPathPos))
-                jslCC->importPathPos++;
-
-            if (*jslCC->importPathPos) {
-                /* add the path to the list of files to import */
-                if (cx->lint->importPaths) {
-                    JSLImportPathList *newItem;
-                    newItem = JS_malloc(cx, sizeof(JSLImportPathList));
-                    JS_INIT_CLIST(&newItem->links);
-                    newItem->importPath = JS_strdup(cx, jslCC->importPath);
-                    JS_APPEND_LINK(&newItem->links, &cx->lint->importPaths->links);
-                }
-            }
-            else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, defaultErrNumber)) {
-                return JS_FALSE;
+        if (*jslCC->valuePos) {
+            /* add the path to the list of files to import */
+            if (cx->lint->importPaths) {
+                JSLImportPathList *newItem;
+                newItem = JS_malloc(cx, sizeof(JSLImportPathList));
+                JS_INIT_CLIST(&newItem->links);
+                newItem->importPath = JS_strdup(cx, jslCC->valuePos);
+                JS_APPEND_LINK(&newItem->links, &cx->lint->importPaths->links);
             }
         }
         else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, defaultErrNumber)) {
