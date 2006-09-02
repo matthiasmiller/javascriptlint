@@ -1,17 +1,24 @@
 /*conf:-lambda_assign_requires_semicolon*/
 
 
-/* Test with a simple variable. *
+/* Test with a simple variable. */
 var x = function() {
     return {};
-} /*warning:missing_semicolon*/
+}
+var y; /*warning:missing_semicolon*/
 
 
-/* Test an assignment to a prototype. */
 function Foo()
 {
     this.bar = 10;
+
+    /* Test an assignment to a member. */
+    this.setBar = function(bar) {
+        this.bar = bar;
+    }
 }
+
+/* Test an assignment to a prototype. */
 Foo.prototype.getBar = function() {
     return this.bar;
 }
