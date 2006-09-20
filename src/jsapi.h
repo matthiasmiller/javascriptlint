@@ -468,6 +468,9 @@ extern JS_PUBLIC_API(void)
 JS_SetGlobalObject(JSContext *cx, JSObject *obj);
 
 extern JS_PUBLIC_API(JSBool)
+JS_IsValidIdentifier(const char *identifier);
+
+extern JS_PUBLIC_API(JSBool)
 JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
                       JSBool alwaysUseOptionExplicit, JSBool lambdaAssignRequiresSemicolon,
                       JSBool enableLegacyControlComments, JSLImportCallback importCallback, void *parms);

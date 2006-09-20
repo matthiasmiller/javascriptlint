@@ -1582,24 +1582,6 @@ LintConfError(JSContext *cx, const char *path, int lineno, const char *err)
     return EXITCODE_USAGE_OR_CONFIGERR;
 }
 
-static JSBool
-IsValidIdentifier(const char *identifier)
-{
-    const char *identifierPos;
-
-    if (!*identifier || !JS_ISIDENT_START(*identifier))
-        return JS_FALSE;
-
-    identifierPos = identifier+1;
-    while (*identifierPos) {
-        if (!JS_ISIDENT(*identifierPos))
-            return JS_FALSE;
-        identifierPos++;
-    }
-
-    return JS_TRUE;
-}
-
 static int
 ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scriptPaths)
 {
@@ -1786,7 +1768,7 @@ ProcessSettingErr_Garbage:
                 }
 
                 /* validate identifier */
-                if (!IsValidIdentifier(linepos)) {
+                if (!JS_IsValidIdentifier(linepos)) {
                     char *tmp;
                     int result;
 

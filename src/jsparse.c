@@ -1062,11 +1062,7 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
             /* save global identifier for lint */
             if (cx->lint && cx->lint->scriptIdentifiers && !tc->down) {
                 jsval val;
-                int flags;
- 
-                flags = 0;
-                val = INT_TO_JSVAL(flags);
- 
+                val = INT_TO_JSVAL(0);
                 if (!js_SetProperty(cx, cx->lint->scriptIdentifiers, (jsid)funAtom, &val))
                     return NULL;
             }
