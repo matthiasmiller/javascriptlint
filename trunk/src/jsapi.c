@@ -1074,6 +1074,24 @@ JS_SetGlobalObject(JSContext *cx, JSObject *obj)
 }
 
 JS_PUBLIC_API(JSBool)
+JS_IsValidIdentifier(const char *identifier)
+{
+    const char *identifierPos;
+
+    if (!*identifier || !JS_ISIDENT_START(*identifier))
+        return JS_FALSE;
+
+    identifierPos = identifier+1;
+    while (*identifierPos) {
+        if (!JS_ISIDENT(*identifierPos))
+            return JS_FALSE;
+        identifierPos++;
+    }
+
+    return JS_TRUE;
+}
+
+JS_PUBLIC_API(JSBool)
 JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
                       JSBool alwaysUseOptionExplicit, JSBool lambdaAssignRequiresSemicolon,
                       JSBool enableLegacyControlComments, JSLImportCallback importCallback, void *parms)

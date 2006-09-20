@@ -807,6 +807,7 @@ typedef struct JSLControlComment
     const char *controlCommentImport;
     const char *controlCommentFallthru;
     const char *controlCommentPass;
+    const char *controlCommentExtern;
 
     /*arbitrary size*/
     char value[1024];
@@ -837,7 +838,7 @@ void
 js_MatchNextControlCommentChar(JSLControlComment *jslCC, JSBool allowValue, const char **strp, int32 c)
 {
     /* check for a value that needs to be processed */
-    if (allowValue && js_MatchedPartialControlComment(jslCC, jslCC->controlCommentImport)) {
+    if (allowValue && js_MatchedPartialControlComment(jslCC, *strp)) {
         if (jslCC->valuePos && jslCC->valuePos - jslCC->value < sizeof(jslCC->value)-1) {
             *jslCC->valuePos++ = (char)c;
             *jslCC->valuePos = 0;
@@ -899,6 +900,7 @@ js_StartControlComment(JSTokenStream *ts, JSLint *lint, JSLControlComment *jslCC
     jslCC->controlCommentImport = "import ";
     jslCC->controlCommentFallthru = "fallthru";
     jslCC->controlCommentPass = "pass";
+    jslCC->controlCommentExtern = "extern";
     jslCC->value[0] = 0;
     jslCC->valuePos = jslCC->value;
     return JS_TRUE;
@@ -914,13 +916,15 @@ js_ReadControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *jslCC
     js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentOptionExplicit, c);
     js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentFallthru, c);
     js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentPass, c);
+    js_MatchNextControlCommentChar(jslCC, JS_TRUE, &jslCC->controlCommentExtern, c);
     js_MatchNextControlCommentChar(jslCC, JS_TRUE, &jslCC->controlCommentImport, c);
     
     jslCC->endedWithAt = (c == '@');
 }
 
 JSBool
-js_ProcessControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *jslCC)
+js_ProcessControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *jslCC,
+                         JSTokenPos commentPos)
 {
     uintN defaultErrNumber;
     defaultErrNumber = jslCC->isAtFormat ? JSMSG_LEGACY_CC_NOT_UNDERSTOOD : JSMSG_JSL_CC_NOT_UNDERSTOOD;
@@ -996,6 +1000,30 @@ js_ProcessControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *js
             cx->lint->controlCommentsFoundPass = JS_TRUE;
         else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_PASS))
             return JS_FALSE;
+    }
+    else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentExtern)) {
+        if (*jslCC->valuePos && JS_IsValidIdentifier(jslCC->valuePos)) {
+            JSToken* tp;
+
+            tp = NewToken(ts);
+            tp->type = TOK_VAR;
+            tp->t_op = JSOP_DEFVAR;
+
+            tp = NewToken(ts);
+            tp->type = TOK_NAME;
+            tp->t_op = JSOP_NAME;
+            tp->t_atom = js_Atomize(cx, jslCC->valuePos, strlen(jslCC->valuePos), 0);
+
+            tp = NewToken(ts);
+            tp->type = TOK_SEMI;
+
+            js_UngetToken(ts);
+            js_UngetToken(ts);
+            js_UngetToken(ts);
+        }
+        else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, defaultErrNumber)) {
+            return JS_FALSE;
+        }
     }
     else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentImport)) {
         if (*jslCC->valuePos) {
@@ -1523,7 +1551,9 @@ skipline:
         }
         if (MatchChar(ts, '*')) {
             JSLControlComment jslCC;
+            JSTokenPos commentPos;
             JSBool useCC = JS_FALSE;
+            commentPos = CURRENT_TOKEN(ts).pos;
 
             if (cx->lint)
                 useCC = js_StartControlComment(ts, cx->lint, &jslCC);
@@ -1551,8 +1581,13 @@ skipline:
                 goto error;
             }
 
-            if (useCC && !js_ProcessControlComment(cx, ts, &jslCC))
-                goto error;
+            if (useCC) {
+                if (!js_ProcessControlComment(cx, ts, &jslCC, commentPos))
+                    goto error;
+                /* recurse to handle generated tokens */
+                if (ts->lookahead != 0)
+                    return js_GetToken(cx, ts);
+            }
 
             goto retry;
         }
