@@ -807,7 +807,7 @@ typedef struct JSLControlComment
     const char *controlCommentImport;
     const char *controlCommentFallthru;
     const char *controlCommentPass;
-    const char *controlCommentExtern;
+    const char *controlCommentDeclare;
 
     /*arbitrary size*/
     char value[1024];
@@ -900,7 +900,7 @@ js_StartControlComment(JSTokenStream *ts, JSLint *lint, JSLControlComment *jslCC
     jslCC->controlCommentImport = "import ";
     jslCC->controlCommentFallthru = "fallthru";
     jslCC->controlCommentPass = "pass";
-    jslCC->controlCommentExtern = "extern";
+    jslCC->controlCommentDeclare = "declare";
     jslCC->value[0] = 0;
     jslCC->valuePos = jslCC->value;
     return JS_TRUE;
@@ -916,7 +916,7 @@ js_ReadControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *jslCC
     js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentOptionExplicit, c);
     js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentFallthru, c);
     js_MatchNextControlCommentChar(jslCC, JS_FALSE, &jslCC->controlCommentPass, c);
-    js_MatchNextControlCommentChar(jslCC, JS_TRUE, &jslCC->controlCommentExtern, c);
+    js_MatchNextControlCommentChar(jslCC, JS_TRUE, &jslCC->controlCommentDeclare, c);
     js_MatchNextControlCommentChar(jslCC, JS_TRUE, &jslCC->controlCommentImport, c);
     
     jslCC->endedWithAt = (c == '@');
@@ -1001,7 +1001,7 @@ js_ProcessControlComment(JSContext *cx, JSTokenStream *ts, JSLControlComment *js
         else if (!js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING, JSMSG_INVALID_PASS))
             return JS_FALSE;
     }
-    else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentExtern)) {
+    else if (js_MatchedEntireControlComment(jslCC, jslCC->controlCommentDeclare)) {
         if (*jslCC->valuePos && JS_IsValidIdentifier(jslCC->valuePos)) {
             JSToken* tp;
 

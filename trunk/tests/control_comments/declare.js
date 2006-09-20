@@ -1,26 +1,26 @@
 /*jsl:option explicit*/
-function extern() {
+function declare() {
     window.alert('http://www.javascriptlint.com/');
-    /*jsl:extern window*/
+    /*jsl:declare window*/
 
     /* redeclaration only at local scope */
     var window;/*warning:redeclared_var*/
     var document;
-    /*jsl:extern document*//*warning:redeclared_var*/
+    /*jsl:declare document*//*warning:redeclared_var*/
 }
 
 var i = 10
-/*jsl:extern sample*//*warning:missing_semicolon*/
+/*jsl:declare sample*//*warning:missing_semicolon*/
 
-/* extern was scoped */
+/* declare was scoped */
 window.alert('JavaScript Lint');/*warning:undeclared_identifier*/
 
 document.write('<a href="http://www.javascriptlint.com/">JavaScript Lint</a>');
 
-/*jsl:extern document*/
+/*jsl:declare document*/
 function document()/*warning:redeclared_var*/
 {
 }
 
-/*jsl:extern*//*warning:jsl_cc_not_understood*/
-/*jsl:extern variable?*//*warning:jsl_cc_not_understood*/
+/*jsl:declare*//*warning:jsl_cc_not_understood*/
+/*jsl:declare variable?*//*warning:jsl_cc_not_understood*/
