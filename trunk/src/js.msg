@@ -287,3 +287,4 @@ MSG_DEF(JSMSG_JSL_CC_NOT_UNDERSTOOD,  204, 0, JSEXN_SYNTAXERR, "couldn't underst
 MSG_DEF(JSMSG_USELESS_COMPARISON,     205, 0, JSEXN_SYNTAXERR, "useless comparison; comparing identical expressions")
 MSG_DEF(JSMSG_WITH_STATEMENT,         206, 0, JSEXN_SYNTAXERR, "with statement hides undeclared variables; use temporary variable instead")
 MSG_DEF(JSMSG_TRAILING_COMMA_IN_ARRAY,207, 0, JSEXN_SYNTAXERR, "extra comma is not recommended in array initializers")
+MSG_DEF(JSMSG_ASSIGN_TO_FUNCTION_CALL,208, 0, JSEXN_SYNTAXERR, "assignment to a function call")
