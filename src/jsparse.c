@@ -2977,6 +2977,12 @@ AssignExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 #if JS_HAS_LVALUE_RETURN
       case TOK_LP:
         pn2->pn_op = JSOP_SETCALL;
+        if (cx->lint &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL,
+                                         JSREPORT_WARNING | JSREPORT_STRICT,
+                                         JSMSG_ASSIGN_TO_FUNCTION_CALL)) {
+            return NULL;
+        }
         break;
 #endif
       default:
