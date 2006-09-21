@@ -2,30 +2,43 @@
 function comparison_type_conv() {
     var a, b, c;
 
-    /* wrong - comparison against null */
+    /* comparison against null */
     if (a == null || b < c) { /*warning:comparison_type_conv*/
         a = b;
     }
-    /* ok - comparison against null */
     if (a === null || b < c) {
         a = b;
     }
 
-    /* wrong - comparison against zero */
+    /* comparison against zero */
     if (c > a && a + b == 0) { /*warning:comparison_type_conv*/
         c = -c;
     }
-    /* ok - comparison against zero */
     if (c > a && a + b === 0) {
         c = -c;
     }
 
-    /* wrong - comparison against blank string */
+    /* comparison against blank string */
     if (a == "") { /*warning:comparison_type_conv*/
         b = c;
     }
-    /* ok - comparison against blank string */
     if (a === "") {
         b = c;
+    }
+
+    /* comparison against true */
+    if (a == true) { /*warning:comparison_type_conv*/
+        c = b;
+    }
+    if (a === true) {
+        c = b;
+    }
+
+    /* comparison against false */
+    if (a == false) { /*warning:comparison_type_conv*/
+        c = a;
+    }
+    if (a === false) {
+        c = a;
     }
 }

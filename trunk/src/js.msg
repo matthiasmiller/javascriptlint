@@ -259,7 +259,7 @@ MSG_DEF(JSMSG_COMMA_SEPARATED_STMTS,  176, 0, JSEXN_SYNTAXERR, "multiple stateme
 MSG_DEF(JSMSG_UNREACHABLE_CODE,       177, 0, JSEXN_SYNTAXERR, "unreachable code")
 MSG_DEF(JSMSG_MISSING_BREAK,          178, 0, JSEXN_SYNTAXERR, "missing break statement")
 MSG_DEF(JSMSG_MISSING_BREAK_FOR_LAST_CASE,179, 0, JSEXN_SYNTAXERR, "missing break statement for last case in switch")
-MSG_DEF(JSMSG_COMPARISON_TYPE_CONV,   180, 0, JSEXN_SYNTAXERR, "comparisons against null, 0, or an empty string allowing implicit type conversion (use === or !==)")
+MSG_DEF(JSMSG_COMPARISON_TYPE_CONV,   180, 0, JSEXN_SYNTAXERR, "comparisons against null, 0, true, false, or an empty string allowing implicit type conversion (use === or !==)")
 MSG_DEF(JSMSG_INC_DEC_WITHIN_STMT,    181, 0, JSEXN_SYNTAXERR, "increment (++) and decrement (--) operators used as part of greater statement")
 MSG_DEF(JSMSG_USELESS_VOID,           182, 0, JSEXN_SYNTAXERR, "use of the void type may be unnecessary (void is always undefined)")
 MSG_DEF(JSMSG_MULTIPLE_PLUS_MINUS,	  183, 0, JSEXN_SYNTAXERR, "unknown order of operations for successive plus (e.g. x+++y) or minus (e.g. x---y) signs")
