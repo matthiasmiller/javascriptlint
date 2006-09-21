@@ -3553,6 +3553,13 @@ MemberExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
                                      JSMSG_TOO_MANY_FUN_ARGS);
                 return NULL;
             }
+            if (pn->pn_op == JSOP_NAME &&
+                pn->pn_atom == cx->runtime->atomState.lazy.parseIntAtom && pn2->pn_count <= 2 &&
+                !js_ReportCompileErrorNumber(cx, ts, NULL, JSREPORT_WARNING | JSREPORT_STRICT,
+                                             JSMSG_PARSEINT_MISSING_RADIX,
+                                             js_AtomToPrintableString(cx, pn->pn_atom))) {
+                return NULL;
+            }
             pn2->pn_pos.end = CURRENT_TOKEN(ts).pos.end;
         } else {
             js_UngetToken(ts);
