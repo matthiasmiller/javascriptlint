@@ -142,6 +142,14 @@
         }
     };
 
+    function getLintTextAsHTML($text)
+    {
+        $enc = htmlentities($text);
+        $enc = str_replace("\n", '<br/>', $enc);
+        $enc = str_replace(' ', '&nbsp;', $enc);
+        return $enc;
+    }
+
     function OutputLintHTML($engine)
     {
 ?>
@@ -149,9 +157,7 @@
         div#code
         {
             color: #999;
-            font-family: Courier;
-            white-space: pre;
-            font-size: smaller;
+            font-family: monospace;
         }
         div#code div
         {
@@ -162,7 +168,6 @@
         {
             font-weight: bold;
             font-family: Arial;
-            white-space: auto;
             font-size: .9em;
             color: #F00;
         }
@@ -182,7 +187,7 @@
             /* format code */
             $text = $engine->getLineText($lineno);
             $text = str_replace("\t", str_pad("", 4/*tab width*/, " "), $text);
-            echo str_pad($lineno+1, $widthOfLineNo, " ", STR_PAD_LEFT) . '  ' . htmlentities($text) . "\n";
+            echo getLintTextAsHTML(str_pad($lineno+1, $widthOfLineNo, " ", STR_PAD_LEFT) . '  ' . $text . "\n");
 
             /* show errors */
             $errors = $engine->getLineMessages($lineno);
@@ -198,14 +203,14 @@
 
                 /* point to the error position, if available */
                 if ($Error->getChar() > -1)
-                    echo $lineNoSpacer . str_pad("", $Error->getChar()-1, "=") . "^\n";
+                    echo getLintTextAsHTML($lineNoSpacer . str_pad("", $Error->getChar()-1, "=") . "^\n");
 
                 /* output error type/message */
-                echo $lineNoSpacer . '<span>';
+                echo getLintTextAsHTML($lineNoSpacer) . '<span>';
                 if ($Error->getType())
-                    echo htmlentities($Error->getType()) . ': ';
-                echo htmlentities(str_replace("\n", "<br/>", $Error->getMessage()));
-                echo '</span>' . "\n";
+                    echo getLintTextAsHTML($Error->getType() . ': ');
+                echo getLintTextAsHTML($Error->getMessage());
+                echo '</span>' . getLintTextAsHTML("\n");
 
                 echo '</div>';
             }
