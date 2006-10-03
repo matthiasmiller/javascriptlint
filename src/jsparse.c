@@ -3109,13 +3109,9 @@ BitAndExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
 static JSBool
 AllowImplicitConversionOnCompare(JSContext *cx, JSParseNode *pn)
 {
-    if (pn->pn_type == TOK_PRIMARY) {
-        switch (pn->pn_op) {
-          case JSOP_NULL:
-          case JSOP_TRUE:
-          case JSOP_FALSE:
-            return JS_FALSE;
-        }
+    if (pn->pn_type == TOK_PRIMARY &&
+        (pn->pn_op == JSOP_NULL || pn->pn_op == JSOP_TRUE || pn->pn_op == JSOP_FALSE)) {
+        return JS_FALSE;
     }
 
     if (pn->pn_type == TOK_STRING && pn->pn_op == JSOP_STRING &&
