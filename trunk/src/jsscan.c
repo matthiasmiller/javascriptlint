@@ -1562,7 +1562,7 @@ skipline:
                 !(c == '*' && MatchChar(ts, '/'))) {
 
                 /* check for nested comments */
-                if (c == '/' && MatchChar(ts, '*') &&
+                if (c == '/' && PeekChar(ts) == '*' &&
                     !js_ReportCompileErrorNumber(cx, ts, NULL,
                                                  JSREPORT_WARNING |
                                                  JSREPORT_STRICT,
