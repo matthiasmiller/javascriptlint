@@ -3,7 +3,7 @@ function meaningless_block() {
     var i;
 
     /* meaningless block */
-    { /*warning:meaningless_black*/
+    { /*warning:meaningless_block*/
         var s;
         s = i + "%";
     }
