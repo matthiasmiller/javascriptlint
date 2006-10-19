@@ -195,6 +195,7 @@ JSLScriptList gScriptList;
 JSBool gAlwaysUseOptionExplicit = JS_FALSE;
 JSBool gEnableLegacyControlComments = JS_TRUE;
 JSBool gLambdaAssignRequiresSemicolon = JS_TRUE;
+JSBool gEnableJScriptFunctionExtensions = JS_FALSE;
 JSBool gRecurse = JS_FALSE;
 JSBool gShowFileListing = JS_TRUE;
 JSBool gShowContext = JS_TRUE;
@@ -901,7 +902,8 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
 
     if (JS_PushLintIdentifers(cx, scriptInfo->obj, &dependencies,
                               gAlwaysUseOptionExplicit, gLambdaAssignRequiresSemicolon,
-                              gEnableLegacyControlComments, ImportScript, &importParms)) {
+                              gEnableLegacyControlComments, gEnableJScriptFunctionExtensions,
+                              ImportScript, &importParms)) {
         tmp_result = ProcessScriptContents(cx, obj, GetFileTypeFromPath(path), path,
             contents, ImportScript, &importParms);
         JS_PopLintIdentifers(cx);
@@ -1412,7 +1414,7 @@ ProcessStdin(JSContext *cx, JSObject *obj)
 
     /* lint */
     if (!JS_PushLintIdentifers(cx, NULL, NULL, gAlwaysUseOptionExplicit, gLambdaAssignRequiresSemicolon,
-                              gEnableLegacyControlComments, NULL, NULL)) {
+                              gEnableLegacyControlComments, gEnableJScriptFunctionExtensions, NULL, NULL)) {
         JS_free(cx, contents);
         SetExitCode(EXITCODE_JS_ERROR);
         return JS_FALSE;
@@ -1507,6 +1509,20 @@ PrintDefaultConf(void)
         "# although legacy control comments are enabled by default for backward compatibility.\n"
         "#\n"
         "+legacy_control_comments\n"
+        , stdout);
+
+    fputs(
+        "\n\n### JScript Function Extensions\n"
+        "# JScript allows member functions to be defined like this:\n"
+        "#     function MyObj() { /*constructor*/ }\n"
+        "#     function MyObj.prototype.go() { /*member function*/ }\n"
+        "#\n"
+        "# It also allows events to be attached like this:\n"
+        "#     function window::onload() { /*init page*/ }\n"
+        "#\n"
+        "# This is a Microsoft-only JavaScript extension. Enable this setting to allow them.\n"
+        "#\n"
+        "-jscript_function_extensions\n"
         , stdout);
 
     fputs(
@@ -1741,7 +1757,10 @@ ProcessSettingErr_Garbage:
                 gLambdaAssignRequiresSemicolon = enable;
             }
             else if (strcasecmp(linepos, "legacy_control_comments") == 0) {
-               gEnableLegacyControlComments = enable;
+                gEnableLegacyControlComments = enable;
+            }
+            else if (strcasecmp(linepos, "jscript_function_extensions") == 0) {
+                gEnableJScriptFunctionExtensions = enable;
             }
             else if (strncasecmp(linepos, "define", strlen("define")) == 0) {
                 jsval val;
