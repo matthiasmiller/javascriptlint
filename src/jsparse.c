@@ -1025,6 +1025,21 @@ FunctionDef(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
     /* Scan the optional function name into funAtom. */
     funAtom = js_MatchToken(cx, ts, TOK_NAME) ? CURRENT_TOKEN(ts).t_atom : NULL;
 
+    if (cx->lint && cx->lint->enableJScriptFunctionExtensions) {
+        /* match multiple dot sequences */
+        while (js_MatchToken(cx, ts, TOK_DOT)) {
+            MUST_MATCH_TOKEN(TOK_NAME, JSMSG_SYNTAX_ERROR);
+            funAtom = NULL;
+        }
+
+        /* match double-colon syntax */
+        if (js_MatchToken(cx, ts, TOK_COLON)) {
+            MUST_MATCH_TOKEN(TOK_COLON, JSMSG_SYNTAX_ERROR);
+            MUST_MATCH_TOKEN(TOK_NAME, JSMSG_SYNTAX_ERROR);
+            funAtom = NULL;
+        }
+    }
+
     /* Find the nearest variable-declaring scope and use it as our parent. */
     fp = cx->fp;
     varobj = fp->varobj;

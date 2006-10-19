@@ -1094,7 +1094,8 @@ JS_IsValidIdentifier(const char *identifier)
 JS_PUBLIC_API(JSBool)
 JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
                       JSBool alwaysUseOptionExplicit, JSBool lambdaAssignRequiresSemicolon,
-                      JSBool enableLegacyControlComments, JSLImportCallback importCallback, void *parms)
+                      JSBool enableLegacyControlComments, JSBool enableJScriptFunctionExtensions,
+                      JSLImportCallback importCallback, void *parms)
 {
     JSLint *newLint;
     newLint = JS_malloc(cx, sizeof(JSLint));
@@ -1116,6 +1117,7 @@ JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectLi
     newLint->alwaysUseOptionExplicit = alwaysUseOptionExplicit;
     newLint->lambdaAssignRequiresSemicolon = lambdaAssignRequiresSemicolon;
     newLint->enableLegacyControlComments = enableLegacyControlComments;
+    newLint->enableJScriptFunctionExtensions = enableJScriptFunctionExtensions;
     newLint->down = cx->lint;
     cx->lint = newLint;
     return JS_TRUE;

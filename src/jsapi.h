@@ -473,7 +473,8 @@ JS_IsValidIdentifier(const char *identifier);
 extern JS_PUBLIC_API(JSBool)
 JS_PushLintIdentifers(JSContext *cx, JSObject *curScriptIdentifiers, JSLObjectList *dependencyIdentifiers,
                       JSBool alwaysUseOptionExplicit, JSBool lambdaAssignRequiresSemicolon,
-                      JSBool enableLegacyControlComments, JSLImportCallback importCallback, void *parms);
+                      JSBool enableLegacyControlComments, JSBool enableJScriptFunctionExtensions,
+                      JSLImportCallback importCallback, void *parms);
 
 extern JS_PUBLIC_API(void)
 JS_PopLintIdentifers(JSContext *cx);
