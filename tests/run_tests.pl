@@ -44,7 +44,7 @@ sub TestFile {
 		# some warnings point beyond the end of the file
 		$line = scalar(@contents) if $line > scalar(@contents);
 
-		unless ($contents[$line-1] =~ s/\/\*warning//) {
+		unless ($contents[$line-1] =~ s/\/\*warning:$error\*\///) {
 			print "Error in $filename, line $line: $error\n";
 			$this_passed = 0;
 		}
