@@ -5,8 +5,23 @@
 var x = function() {
     return {};
 }
-var y; /*warning:missing_semicolon*/
+x();
 
+var a, b = function() { }, c
+b(); /*warning:missing_semicolon*/
+var d, e = function() { }
+e(); /*warning:missing_semicolon*/
+
+var y;
+y = function() {
+    return [];
+}
+y();
+
+global = function() {
+    return null;
+}
+global();
 
 function Foo()
 {
@@ -16,9 +31,13 @@ function Foo()
     this.setBar = function(bar) {
         this.bar = bar;
     }
+
+    this.setBar(this.bar * 2);
 }
 
 /* Test an assignment to a prototype. */
 Foo.prototype.getBar = function() {
     return this.bar;
 }
+
+var foo = new Foo();
