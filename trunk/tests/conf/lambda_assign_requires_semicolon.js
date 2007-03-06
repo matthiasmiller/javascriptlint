@@ -10,7 +10,7 @@ x();
 var a, b = function() { }, c
 b(); /*warning:missing_semicolon*/
 var d, e = function() { }
-e(); /*warning:missing_semicolon*/
+e();
 
 var y;
 y = function() {

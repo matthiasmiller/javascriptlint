@@ -2644,8 +2644,8 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
                 pn->pn_kid->pn_type == TOK_ASSIGN) {
                 pnValue = pn->pn_kid->pn_right;
             }
-            else if (pn->pn_type == TOK_VAR && pn->pn_count == 1) {
-                pnValue = pn->pn_head->pn_expr;
+            else if (pn->pn_type == TOK_VAR && pn->pn_count > 0) {
+                pnValue = PN_LAST(pn)->pn_expr;
             }
 
             if (pnValue &&
