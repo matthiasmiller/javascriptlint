@@ -2635,17 +2635,29 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     }
 
     if (!js_MatchToken(cx, ts, TOK_SEMI) && cx->lint) {
-        if (!cx->lint->lambdaAssignRequiresSemicolon &&
-            pn &&
-            pn->pn_type == TOK_SEMI &&
-            pn->pn_kid &&
-            pn->pn_kid->pn_type == TOK_ASSIGN &&
-            pn->pn_kid->pn_right &&
-            pn->pn_kid->pn_right->pn_type == TOK_FUNCTION &&
-            pn->pn_kid->pn_right->pn_op == JSOP_ANONFUNOBJ) {
-            /* disregard missing semicolon */
+        JSBool shouldReportMissingSemicolon = JS_TRUE;
+        if (!cx->lint->lambdaAssignRequiresSemicolon) {
+            JSParseNode* pnValue = NULL;
+
+            if (pn->pn_type == TOK_SEMI &&
+                pn->pn_kid &&
+                pn->pn_kid->pn_type == TOK_ASSIGN) {
+                pnValue = pn->pn_kid->pn_right;
+            }
+            else if (pn->pn_type == TOK_VAR && pn->pn_count == 1) {
+                pnValue = pn->pn_head->pn_expr;
+            }
+
+            if (pnValue &&
+                pnValue->pn_type == TOK_FUNCTION &&
+                pnValue->pn_op == JSOP_ANONFUNOBJ) {
+                /* ignore missing semicolon */
+                shouldReportMissingSemicolon = JS_FALSE;
+            }
         }
-        else if (!js_ReportCompileErrorNumber(cx, ts, NULL,
+
+        if (shouldReportMissingSemicolon &&
+            !js_ReportCompileErrorNumber(cx, ts, NULL,
                                               JSREPORT_WARNING |
                                               JSREPORT_STRICT,
                                               JSMSG_MISSING_SEMICOLON)) {
