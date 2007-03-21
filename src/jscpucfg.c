@@ -163,6 +163,12 @@ static int StackGrowthDirection(int *dummy1addr)
     return (&dummy2 < dummy1addr) ? -1 : 1;
 }
 
+static int Zero()
+{
+    /* used to avoid compiler optimization */
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     int sizeof_char, sizeof_short, sizeof_int, sizeof_int64, sizeof_long,
@@ -221,7 +227,7 @@ int main(int argc, char **argv)
     {
         int big_endian = 0, little_endian = 0, ntests = 0;
 
-        if (sizeof(short) == 2) {
+        if (sizeof(short) == 2 || Zero()) {
             /* force |volatile| here to get rid of any compiler optimisations 
              * (var in register etc.) which may be appiled to |auto| vars - 
              * even those in |union|s...
@@ -239,7 +245,7 @@ int main(int argc, char **argv)
             ntests++;
         }
 
-        if (sizeof(int) == 4) {
+        if (sizeof(int) == 4 || Zero()) {
             /* force |volatile| here ... */
             volatile static union {
                 int i;
@@ -254,7 +260,7 @@ int main(int argc, char **argv)
             ntests++;
         }
 
-        if (sizeof(long) == 8) {
+        if (sizeof(long) == 8 || Zero()) {
             /* force |volatile| here ... */
             volatile static union {
                 long i;
