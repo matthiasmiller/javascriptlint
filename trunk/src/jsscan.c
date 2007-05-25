@@ -810,7 +810,7 @@ typedef struct JSLControlComment
     const char *controlCommentDeclare;
 
     /*arbitrary size*/
-    char value[1024];
+    char value[512];
     char *valuePos;
 } JSLControlComment;
 
