@@ -375,11 +375,11 @@ closedir(DIR *dir)
 static char *
 JSL_RealPath(const char *path, char *resolved_path)
 {
-	int ret = GetFullPathName(path, _MAX_PATH, resolved_path, NULL);
-	if (!ret || ret > _MAX_PATH) {
-		return NULL;
-	}
-	return resolved_path;
+    int ret = GetFullPathName(path, _MAX_PATH, resolved_path, NULL);
+    if (!ret || ret > _MAX_PATH) {
+        return NULL;
+    }
+    return resolved_path;
 }
 
 #else
@@ -840,7 +840,7 @@ ProcessSingleScript(JSContext *cx, JSObject *obj, const char *relpath, JSLScript
         OutputErrorMessage(relpath, 0, 0, NULL, NULL, "unable to resolve path");
         SetExitCode(EXITCODE_FILE_ERROR);
         return JS_FALSE;
-	}
+    }
 
     /* returns false if already in list */
     tmp_result = AddNewScriptToList(cx, path, &scriptInfo);
@@ -1290,7 +1290,7 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
         OutputErrorMessage(relpath, 0, 0, NULL, NULL, "unable to resolve path");
         SetExitCode(EXITCODE_FILE_ERROR);
         return JS_FALSE;
-	}
+    }
 
     /* get the full folder name */
     file = GetFileName(path);
@@ -1613,7 +1613,7 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
         OutputErrorMessage(relpath, 0, 0, NULL, NULL, "unable to resolve path");
         SetExitCode(EXITCODE_FILE_ERROR);
         return EXITCODE_FILE_ERROR;
-	}
+    }
 
     /* open file */
     file = fopen(path, "r");
