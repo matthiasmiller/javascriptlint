@@ -2197,13 +2197,10 @@ FreeErrNames(JSContext *cx)
 int
 main(int argc, char **argv, char **envp)
 {
-    JSVersion version;
     JSRuntime *rt;
     JSContext *cx;
     JSObject *glob;
     int result;
-
-    version = JSVERSION_DEFAULT;
 
     argc--;
     argv++;
@@ -2233,10 +2230,6 @@ main(int argc, char **argv, char **envp)
     /* switch over error names to lower-case values */
     if (!LoadErrNames(cx))
         return 1;
-
-    /* Set version only after there is a global object. */
-    if (version != JSVERSION_DEFAULT)
-        JS_SetVersion(cx, version);
 
     JS_ToggleOptions(cx, JSOPTION_STRICT);
 
