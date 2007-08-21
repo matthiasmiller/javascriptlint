@@ -1050,7 +1050,7 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
 
                         /* skip spaces */
                         while (*contentsPos && isspace(*contentsPos)) {
-                            *contentsPos++;
+                            contentsPos++;
                             COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
                         }
 
@@ -1060,6 +1060,7 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                             SetExitCode(EXITCODE_JS_ERROR);
                             return JS_FALSE;
                         }
+                        contentsPos++;
 
                         if (scriptSrcStart) {
                             OutputErrorMessage(path, lineno, 0, NULL, "html error", "only one src attribute is allowed");
@@ -1068,8 +1069,10 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
                         }
 
                         /* skip spaces */
-                        *contentsPos++;
-                        COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
+                        while (*contentsPos && isspace(*contentsPos)) {
+                            contentsPos++;
+                            COUNT_AND_SKIP_NEWLINES(contentsPos, lineno);
+                        }
 
                         /* force quotes on src attribute */
                         if (!*contentsPos || (*contentsPos != '\"' && *contentsPos != '\'')) {
