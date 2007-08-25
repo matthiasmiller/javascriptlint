@@ -11,12 +11,14 @@ if (scalar(@ARGV) != 1) {
 	die("Usage: run_tests.pl <path to jsl>\n");
 }
 my $jsl_path = File::Spec->rel2abs($ARGV[0]);
+my $tests_path = $FindBin::Bin;
 
 my $num_tests = 0;
 my $num_passed = 0;
 sub TestFile {
 	/\.(js|htm|html)$/ or return;
 	my $filename = $_;
+	my $pretty_name = $File::Find::name;
 
 	my $conf_file = ".jsl.conf";
 
@@ -31,7 +33,7 @@ sub TestFile {
 	close FILE;
 
 	# run the lint
-	print "Testing $filename...\n";
+	print "Testing $pretty_name...\n";
 	my $results = `$jsl_path --conf $conf_file --process $filename --nologo --nofilelisting --nocontext --nosummary -output-format __LINE__,__ERROR_NAME__`;
 	my $exit_code = $? >> 8;
 	unlink $conf_file;
@@ -71,8 +73,8 @@ sub TestFile {
 # locate all files in the test folder
 #
 my @dirs;
-push(@dirs, $FindBin::Bin);
-print "Searching $FindBin::Bin...\n";
+push(@dirs, $tests_path);
+print "Searching $tests_path...\n";
 find( sub{TestFile}, '.');
 
 print "Passed $num_passed of $num_tests tests\n";
