@@ -620,7 +620,7 @@ AllocPathListItem(const char *path)
 
 /* returns false if already in list */
 static void
-AddPathToList(JSLPathList *pathList, const char *path)
+AddAbsolutePathToList(JSLPathList *pathList, const char *path)
 {
     JSLPathList *pathItem;
     pathItem = AllocPathListItem(path);
@@ -1273,8 +1273,11 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
     }
 }
 
+/* Error is NULL on success and set on failure.
+ * Caller should free error.
+ */
 static JSBool
-ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
+AddRelativePathToList(JSLPathList *pathList, char *relpath, char **err)
 {
     DIR *search_dir;
     char path[MAXPATHLEN+1];
@@ -1283,6 +1286,9 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
 
     struct dirent *cur;
 
+    /* clear output variable */
+    *err = NULL;
+
     /* get the folder name */
     file = GetFileName(relpath);
     folder = JS_smprintf("%s%c", relpath, DEFAULT_DIRECTORY_SEPARATOR);
@@ -1290,8 +1296,7 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
 
     /* resolve relative paths */
     if (!JSL_RealPath(relpath, path)) {
-        OutputErrorMessage(relpath, 0, 0, NULL, NULL, "unable to resolve path");
-        SetExitCode(EXITCODE_FILE_ERROR);
+        *err = JS_smprintf("unable to resolve path: %s", relpath);
         return JS_FALSE;
     }
 
@@ -1305,8 +1310,7 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
         /* this has wildcards, so do a search on this path */
         search_dir = opendir(folder);
         if (!search_dir) {
-            OutputErrorMessage(relpath, 0, 0, NULL, NULL, "unable to search directory");
-            SetExitCode(EXITCODE_FILE_ERROR);
+            *err = JS_smprintf("unable to search directory: %s", folder);
             return JS_FALSE;
         }
     }
@@ -1316,15 +1320,14 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
         if (!search_dir) {
             /* if not, was this intended as a folder? */
             if (*path && (path[strlen(path)-1] == '/' || path[strlen(path)-1] == '\\')) {
-                OutputErrorMessage(path, 0, 0, NULL, "can't open file", "path does not exist");
-                JS_free(cx, folder);
-                SetExitCode(EXITCODE_FILE_ERROR);
+                *err = JS_smprintf("can't open file; path does not exist: %s", path);
                 return JS_FALSE;
             }
             else {
                 /* treat as a file */
-                JS_free(cx, folder);
-                return ProcessSingleScript(cx, obj, path, NULL);
+                JS_smprintf_free(folder);
+                AddAbsolutePathToList(pathList, path);
+                return JS_TRUE;
             }
         }
     }
@@ -1343,30 +1346,31 @@ ProcessScripts(JSContext *cx, JSObject *obj, char *relpath)
 
         tmp = JS_smprintf("%s%s", folder, cur->d_name);
         if (!JSL_RealPath(tmp, curPath)) {
-            JS_free(cx, tmp);
             closedir(search_dir);
-            OutputErrorMessage(relpath, 0, 0, NULL, NULL, "unable to resolve path");
-            SetExitCode(EXITCODE_FILE_ERROR);
+            *err = JS_smprintf("unable to resolve path: %s", tmp);
+            JS_smprintf_free(tmp);
             return JS_FALSE;
         }
-        JS_free(cx, tmp);
+        JS_smprintf_free(tmp);
 
         /* test for directory */
         if (IsDir(curPath)) {
             if (gRecurse) {
+                JSBool result;
                 tmp = JS_smprintf("%s%c%s", curPath, DEFAULT_DIRECTORY_SEPARATOR, file);
-                ProcessScripts(cx, obj, tmp);
-                JS_free(cx, tmp);
+                result = AddRelativePathToList(pathList, tmp, err);
+                JS_smprintf_free(tmp);
+                return result;
             }
         }
         else if (PathMatchesWildcards(file, cur->d_name)) {
             /* process script */
-            ProcessSingleScript(cx, obj, curPath, NULL);
+            AddAbsolutePathToList(pathList, curPath);
         }
     }
 
     closedir(search_dir);
-    JS_free(cx, folder);
+    JS_smprintf_free(folder);
     return JS_TRUE;
 }
 
@@ -1679,7 +1683,8 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
             }
             else if (strncasecmp(linepos, "process", strlen("process")) == 0) {
                 char delimiter;
-                char *path;
+                char *processPath;
+                char *err;
 
                 if (!enable) {
                     fclose(file);
@@ -1708,7 +1713,7 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
 
                 /* read path */
                 if (!*linepos) goto ProcessSettingErr_MissingQuote;
-                path = linepos;
+                processPath = linepos;
                 while (*linepos && *linepos != delimiter)
                     linepos++;
                 if (delimiter && !*linepos) goto ProcessSettingErr_MissingQuote;
@@ -1717,7 +1722,13 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
                 if (linepos[0] && linepos[1]) goto ProcessSettingErr_Garbage;
                 *linepos = 0;
 
-                AddPathToList(scriptPaths, path);
+                if (!AddRelativePathToList(scriptPaths, processPath, &err)) {
+                    int result;
+                    fclose(file);
+                    result = LintConfError(cx, path, lineno, err);
+                    JS_smprintf_free(err);
+                    return result;
+                }
 
                 if (JS_FALSE) {
 ProcessSettingErr_MissingPath:
@@ -1979,8 +1990,15 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
                 configPath = argv[i];
             }
             else if (strcasecmp(parm, "process") == 0) {
-                if (++i < argc)
-                    AddPathToList(&scriptPaths, argv[i]);
+                if (++i < argc) {
+                    char *err = NULL;
+                    if (!AddRelativePathToList(&scriptPaths, argv[i], &err)) {
+                        fprintf(stdout, "Error: %s\n", err);
+                        JS_smprintf_free(err);
+                        result = usage();
+                        goto cleanup;
+                    }
+                }
                 else {
                     fprintf(stdout, "Error: missing file path to process\n");
                     result = usage();
@@ -2031,7 +2049,7 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
         /* delete items from the array as they're processed */
         while (!JS_CLIST_IS_EMPTY(&scriptPaths.links)) {
             JSLPathList *curFileItem = (JSLPathList*)JS_LIST_HEAD(&scriptPaths.links);
-            ProcessScripts(cx, obj, curFileItem->path);
+            ProcessSingleScript(cx, obj, curFileItem->path, NULL);
             JS_REMOVE_LINK(&curFileItem->links);
             JS_free(cx, curFileItem);
         }
