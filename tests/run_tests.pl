@@ -32,6 +32,23 @@ sub TestFile {
 	print FILE join("",@conf);
 	close FILE;
 
+	my $this_passed = 1;
+
+	# look for expected configuration error
+	my @all_conf_errors = grep(s/\/\*conf_error:(([^*]|(\*[^\/]))*)\*\//\1/g, @contents);
+	my $conf_error;
+	if (scalar(@all_conf_errors) > 1) {
+		print "Only one conf_error allowed per script.";
+		$this_passed = 0;
+	}
+	elsif (scalar(@all_conf_errors) == 1) {
+		$conf_error = $all_conf_errors[0];
+		unless ($conf_error) {
+			print "Missing conf_error text.";
+			$this_passed = 0;
+		}
+	}
+
 	# run the lint
 	print "Testing $pretty_name...\n";
 	my $results = `$jsl_path --conf $conf_file --process $filename --nologo --nofilelisting --nocontext --nosummary -output-format __LINE__,__ERROR_NAME__`;
@@ -39,9 +56,18 @@ sub TestFile {
 	unlink $conf_file;
 	die "Error executing $jsl_path" unless defined $results;
 
-	my $this_passed = 1;
-
-	if ($exit_code == 2) {
+	if ($conf_error) {
+		unless ($exit_code == 2) {
+			print "Expected exit code: $exit_code\n";
+			$this_passed = 0;
+		}
+		unless (index($results, "configuration error: $conf_error") > 0) {
+			print "Expected configuration error: $conf_error";
+			print "Got configuration error: $results";
+			$this_passed = 0;
+		}
+	}
+	elsif ($exit_code == 2) {
 		print "Usage or configuration error.\n";
 		$this_passed = 0;
 	}
