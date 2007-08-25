@@ -25,7 +25,7 @@ sub TestFile {
 	my @contents = <FILE>;
 
 	# look for special configuration directives
-	my @conf = grep(s/\/\*conf:([^*]*)\*\//\1\n/g, @contents);
+	my @conf = grep(s/\/\*conf:(([^*]|(\*[^\/]))*)\*\//\1\n/g, @contents);
 	open(FILE, ">$conf_file") or die("Could not open configuration file $conf_file: $!");
 	print FILE join("",@conf);
 	close FILE;
@@ -33,10 +33,17 @@ sub TestFile {
 	# run the lint
 	print "Testing $filename...\n";
 	my $results = `$jsl_path --conf $conf_file --process $filename --nologo --nofilelisting --nocontext --nosummary -output-format __LINE__,__ERROR_NAME__`;
+	my $exit_code = $? >> 8;
 	unlink $conf_file;
 	die "Error executing $jsl_path" unless defined $results;
 
 	my $this_passed = 1;
+
+	if ($exit_code == 2) {
+		print "Usage or configuration error.\n";
+		$this_passed = 0;
+	}
+
 	foreach my $result (split("\n", $results)) {
 		my ($line, $error) = split(",", $result);
 		next unless $error; # for now, skip blank errors (such as inability to open file)
