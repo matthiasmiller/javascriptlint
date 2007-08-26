@@ -123,6 +123,11 @@ typedef enum {
     JSLPlaceholder_Limit
 } JSLPlaceholder;
 
+typedef enum {
+    JSL_PATH_ACTION_ADD,
+    JSL_PATH_ACTION_REMOVE
+} JSLPathAction;
+
 const char *placeholders[] = {
     "__FILE__",
     "__FILENAME__",
@@ -620,11 +625,31 @@ AllocPathListItem(const char *path)
 
 /* returns false if already in list */
 static void
-AddAbsolutePathToList(JSLPathList *pathList, const char *path)
+AddAbsolutePathToList(JSLPathList *pathList, const char *path, JSLPathAction action)
 {
-    JSLPathList *pathItem;
-    pathItem = AllocPathListItem(path);
-    JS_APPEND_LINK(&pathItem->links, &pathList->links);
+    JSLPathList *cur;
+
+    switch (action)
+    {
+      case JSL_PATH_ACTION_ADD:
+        cur = AllocPathListItem(path);
+        JS_APPEND_LINK(&cur->links, &pathList->links);
+        break;
+
+      case JSL_PATH_ACTION_REMOVE:
+        cur = (JSLPathList*)JS_LIST_HEAD(&pathList->links);
+
+        while (cur != pathList) {
+            JSLPathList *next = (JSLPathList*)JS_NEXT_LINK(&cur->links);
+
+            if (path_cmp(path, cur->path) == 0) {
+                JS_REMOVE_LINK(&cur->links);
+                free(cur);
+            }
+            cur = next;
+        }
+        break;
+    }
 }
 
 static void
@@ -1277,7 +1302,7 @@ ProcessScriptContents(JSContext *cx, JSObject *obj, JSLFileType type,
  * Caller should free error.
  */
 static JSBool
-AddRelativePathToList(JSLPathList *pathList, char *relpath, char **err)
+AddRelativePathToList(JSLPathList *pathList, char *relpath, JSLPathAction action, char **err)
 {
     DIR *search_dir;
     char path[MAXPATHLEN+1];
@@ -1326,7 +1351,7 @@ AddRelativePathToList(JSLPathList *pathList, char *relpath, char **err)
             else {
                 /* treat as a file */
                 JS_smprintf_free(folder);
-                AddAbsolutePathToList(pathList, path);
+                AddAbsolutePathToList(pathList, path, action);
                 return JS_TRUE;
             }
         }
@@ -1358,14 +1383,14 @@ AddRelativePathToList(JSLPathList *pathList, char *relpath, char **err)
             if (gRecurse) {
                 JSBool result;
                 tmp = JS_smprintf("%s%c%s", curPath, DEFAULT_DIRECTORY_SEPARATOR, file);
-                result = AddRelativePathToList(pathList, tmp, err);
+                result = AddRelativePathToList(pathList, tmp, action, err);
                 JS_smprintf_free(tmp);
                 return result;
             }
         }
         else if (PathMatchesWildcards(file, cur->d_name)) {
             /* process script */
-            AddAbsolutePathToList(pathList, curPath);
+            AddAbsolutePathToList(pathList, curPath, action);
         }
     }
 
@@ -1686,11 +1711,6 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
                 char *processPath;
                 char *err;
 
-                if (!enable) {
-                    fclose(file);
-                    return LintConfError(cx, path, lineno, "-process is an invalid setting");
-                }
-
                 linepos += strlen("process");
 
                 /* require (but skip) whitespace */
@@ -1722,7 +1742,7 @@ ProcessConf(JSContext *cx, JSObject *obj, const char *relpath, JSLPathList *scri
                 if (linepos[0] && linepos[1]) goto ProcessSettingErr_Garbage;
                 *linepos = 0;
 
-                if (!AddRelativePathToList(scriptPaths, processPath, &err)) {
+                if (!AddRelativePathToList(scriptPaths, processPath, enable ? JSL_PATH_ACTION_ADD : JSL_PATH_ACTION_REMOVE, &err)) {
                     int result;
                     fclose(file);
                     result = LintConfError(cx, path, lineno, err);
@@ -1990,9 +2010,10 @@ ProcessArgs(JSContext *cx, JSObject *obj, char **argv, int argc)
                 configPath = argv[i];
             }
             else if (strcasecmp(parm, "process") == 0) {
+                /* TODO: -process is handled as +process" */
                 if (++i < argc) {
                     char *err = NULL;
-                    if (!AddRelativePathToList(&scriptPaths, argv[i], &err)) {
+                    if (!AddRelativePathToList(&scriptPaths, argv[i], JSL_PATH_ACTION_ADD, &err)) {
                         fprintf(stdout, "Error: %s\n", err);
                         JS_smprintf_free(err);
                         result = usage();

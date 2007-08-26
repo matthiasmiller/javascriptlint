@@ -68,7 +68,7 @@ sub TestFile {
 		}
 	}
 	elsif ($exit_code == 2) {
-		print "Usage or configuration error.\n";
+		print "Usage or configuration error:\n$results";
 		$this_passed = 0;
 	}
 
