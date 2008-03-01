@@ -1187,8 +1187,10 @@ JS_GetPropertyDescArray(JSContext *cx, JSObject *obj, JSPropertyDescArray *pda)
     }
 
     n = scope->entryCount;
+#if 0
     if (n > scope->map.nslots)
         n = scope->map.nslots;
+#endif
     pd = (JSPropertyDesc *) JS_malloc(cx, (size_t)n * sizeof(JSPropertyDesc));
     if (!pd)
         return JS_FALSE;
