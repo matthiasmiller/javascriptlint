@@ -1,0 +1,13 @@
+
+> implement conf file
+
+> support HTML parsing
+
+> support JScript extensions
+
+> implement semicolons warning
+
+> implement line break warning
+
+> add test for syntax error
+

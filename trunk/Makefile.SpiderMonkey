@@ -1,0 +1,67 @@
+
+SPIDERMONKEY_SRC=spidermonkey/src
+
+# Load the SpiderMonkey config to find the OS define
+# Also use this for the SO_SUFFIX
+BUILD_OPT=1
+DEPTH=$(SPIDERMONKEY_SRC)
+include $(SPIDERMONKEY_SRC)/config.mk
+SPIDERMONKEY_OS=$(firstword $(patsubst -D%, %, $(filter -DXP_%, $(OS_CFLAGS))))
+
+ifdef USE_MSVC
+JS_LIB=js32.lib
+else
+JS_LIB=libjs.a
+endif
+
+BUILD_DIR=build/spidermonkey
+
+# Use a dynamically-created makefile to determine the distutils output dir
+DISTUTILS_DIR_MAKEFILE=$(BUILD_DIR)/Makefile-distutils
+include $(DISTUTILS_DIR_MAKEFILE)
+
+ORIG_LIB=$(SPIDERMONKEY_SRC)/$(OBJDIR)/$(JS_LIB)
+COPY_LIB=$(BUILD_DIR)/$(JS_LIB)
+ORIG_DLL=$(SPIDERMONKEY_SRC)/$(OBJDIR)/js32.dll
+COPY_DLL=$(DISTUTILS_DIR)/js32.dll
+OS_HEADER=$(BUILD_DIR)/js_operating_system.h
+ORIG_JSAUTOCFG_H=$(SPIDERMONKEY_SRC)/$(OBJDIR)/jsautocfg.h
+COPY_JSAUTOCFG_H=$(BUILD_DIR)/jsautocfg.h
+
+ALL_TARGETS=$(COPY_LIB) $(OS_HEADER)
+ifndef PREBUILT_CPUCFG
+ALL_TARGETS+=$(COPY_JSAUTOCFG_H)
+endif
+
+ifeq ($(SPIDERMONKEY_OS),XP_WIN)
+ALL_TARGETS+=$(COPY_DLL)
+endif
+
+all: $(ALL_TARGETS)
+
+clean:
+	make -f Makefile.ref -C $(SPIDERMONKEY_SRC) BUILD_OPT=$(BUILD_OPT) clean
+	rm $(ORIG_LIB)
+	rm -R $(BUILD_DIR)
+
+$(DISTUTILS_DIR_MAKEFILE): Makefile.SpiderMonkey $(BUILD_DIR)
+	python -c "import setup; print 'DISTUTILS_DIR='+setup.get_lib_path()" >> $(DISTUTILS_DIR_MAKEFILE)
+
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+$(COPY_LIB): $(BUILD_DIR) $(ORIG_LIB)
+	cp $(ORIG_LIB) $(COPY_LIB)
+
+$(COPY_DLL): $(BUILD_DIR) $(ORIG_LIB)
+	cp $(ORIG_DLL) $(COPY_DLL)
+
+$(OS_HEADER): $(BUILD_DIR)
+	echo "#define $(SPIDERMONKEY_OS)" > $(OS_HEADER)
+
+$(COPY_JSAUTOCFG_H): $(ORIG_JSAUTOCFG_H)
+	cp $(ORIG_JSAUTOCFG_H) $(COPY_JSAUTOCFG_H)
+
+$(ORIG_LIB): 
+	make -f Makefile.ref -C $(SPIDERMONKEY_SRC) BUILD_OPT=$(BUILD_OPT)
+
