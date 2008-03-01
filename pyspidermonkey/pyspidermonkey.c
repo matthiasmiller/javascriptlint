@@ -41,6 +41,10 @@ static const char *error_names[] = {
 };
 JS_STATIC_ASSERT(ARRAY_COUNT(error_names) == JSErr_Limit);
 
+/* Use different numeric ranges to avoid accidental confusion. */
+#define TOK_TO_NUM(tok) (tok+1000)
+#define OPCODE_TO_NUM(op) (op+2000)
+
 
 /** MODULE INITIALIZATION
  */
@@ -57,7 +61,45 @@ static PyMethodDef module_methods[] = {
 
 PyMODINIT_FUNC
 initpyspidermonkey() {
-	(void)Py_InitModule("pyspidermonkey", module_methods);
+	PyObject* module;
+	PyObject* class;
+	PyObject* tok;
+	PyObject* op;
+	int i;
+
+	module = Py_InitModule("pyspidermonkey", module_methods);
+	if (!module)
+		return;
+
+	class = PyClass_New(NULL, PyDict_New(), PyString_FromString("spidermonkey_constants"));
+	if (!class)
+		return;
+
+	/* set up tokens */
+	tok = PyInstance_New(class, NULL, NULL);
+	if (!tok)
+		return;
+	if (PyObject_SetAttrString(module, "tok", tok) == -1)
+		return;
+	for (i = 0; i < ARRAY_COUNT(tokens); i++) {
+		if (PyObject_SetAttrString(tok, tokens[i], PyLong_FromLong(TOK_TO_NUM(i))) == -1)
+			return;
+	}
+
+	/* set up opcodes */
+	op = PyInstance_New(class, NULL, NULL);
+	if (!op)
+		return;
+	if (PyObject_SetAttrString(module, "op", op) == -1)
+		return;
+	for (i = 0; i < ARRAY_COUNT(opcodes); i++) {
+		/* yank off the JSOP prefix */
+		const char* opcode = opcodes[i];
+		if (strlen(opcode) > 5)
+			opcode += 5;
+		if (PyObject_SetAttrString(op, opcode, PyLong_FromLong(OPCODE_TO_NUM(i))) == -1)
+			return;
+	}
 }
 
 PyMODINIT_FUNC
@@ -131,7 +173,7 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node
 
 	PyTuple_SET_ITEM(tuple, node_offset, kw);
 
-	if (PyDict_SetItemString(kw, "type", PyString_FromString(tokens[jsnode->pn_type])) == -1)
+	if (PyDict_SetItemString(kw, "type", Py_BuildValue("i", TOK_TO_NUM(jsnode->pn_type))) == -1)
 		goto fail;
 	if (PyDict_SetItemString(kw, "node_index", Py_BuildValue("i", node_offset)) == -1)
 		goto fail;
@@ -153,7 +195,7 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node
 			goto fail;
 	}
 
-	if (PyDict_SetItemString(kw, "opcode", PyString_FromString(opcodes[jsnode->pn_op])) == -1)
+	if (PyDict_SetItemString(kw, "opcode", Py_BuildValue("i", OPCODE_TO_NUM(jsnode->pn_op))) == -1)
 		goto fail;
 
 	if (jsnode->pn_type == TOK_NUMBER) {

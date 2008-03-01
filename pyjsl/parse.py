@@ -5,6 +5,7 @@ import re
 import unittest
 
 import pyspidermonkey
+from pyspidermonkey import tok, op
 
 class NodePos():
 	def __init__(self, line, col):
@@ -73,10 +74,8 @@ class _Node():
 		def _to_node(kid):
 			if kid:
 				return _Node(kid)
-		kwargs['type'] = kwargs['type'].lower()
 		self.kind = kwargs['type']
-		assert kwargs['opcode'].startswith('JSOP_')
-		kwargs['opcode'] = kwargs['opcode'][5:].lower()
+		kwargs['opcode'] = kwargs['opcode']
 		self.opcode = kwargs['opcode']
 		self.kids = tuple([_to_node(kid) for kid in kwargs['kids']])
 		for kid in self.kids:
@@ -127,9 +126,9 @@ class _Node():
 
 		# Bail out for functions
 		if not are_functions_equiv:
-			if self.kind == 'function':
+			if self.kind == tok.FUNCTION:
 				return False
-			if self.kind == 'lp' and self.opcode == 'call':
+			if self.kind == tok.LP and self.opcode == op.CALL:
 				return False
 
 		if self.kind != other.kind:
@@ -138,11 +137,11 @@ class _Node():
 			return False
 
 		# Check atoms on names, properties, and string constants
-		if self.kind in ('name', 'dot', 'string') and self.atom != other.atom:
+		if self.kind in (tok.NAME, tok.DOT, tok.STRING) and self.atom != other.atom:
 			return False
 
 		# Check values on numbers
-		if self.kind == 'number' and self.dval != other.dval:
+		if self.kind == tok.NUMBER and self.dval != other.dval:
 			return False
 
 		# Compare child nodes
@@ -179,6 +178,7 @@ def _parse_comments(script, root, node_positions, ignore_ranges):
 		else:
 			comment_text = comment_text[2:]
 			opcode = 'JSOP_CPP_COMMENT'
+		opcode = opcode[5:].lower()
 
 		start_offset = match.start()+1
 		end_offset = match.end()
@@ -216,10 +216,10 @@ def parse(script, error_callback):
 	nodes = []
 	comment_ignore_ranges = NodeRanges()
 	def process(node):
-		if node.kind == 'number':
+		if node.kind == tok.NUMBER:
 			node.atom = positions.text(node.start_pos(), node.end_pos())
-		elif node.kind == 'string' or \
-				(node.kind == 'object' and node.opcode == 'regexp'):
+		elif node.kind == tok.STRING or \
+				(node.kind == tok.OBJECT and node.opcode == op.REGEXP):
 			start_offset = positions.to_offset(node.start_pos())
 			end_offset = positions.to_offset(node.end_pos())
 			comment_ignore_ranges.add(start_offset, end_offset)

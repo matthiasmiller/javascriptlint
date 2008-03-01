@@ -8,6 +8,8 @@ import visitation
 import warnings
 import util
 
+from pyspidermonkey import tok, op
+
 _newline_kinds = (
 	'eof', 'comma', 'dot', 'semi', 'colon', 'lc', 'rc', 'lp', 'rb', 'assign',
 	'relop', 'hook', 'plus', 'minus', 'star', 'divop', 'eqop', 'shop', 'or',
@@ -29,14 +31,14 @@ _globals = frozenset([
 _identifier = re.compile('^[A-Za-z_$][A-Za-z0-9_$]*$')
 
 def _find_function(node):
-	while node and node.kind != 'function':
+	while node and node.kind != tok.FUNCTION:
 		node = node.parent
 	return node
 
 def _find_functions(node):
 	functions = []
 	while node:
-		if node.kind == 'function':
+		if node.kind == tok.FUNCTION:
 			functions.append(node)
 		node = node.parent
 	return functions
@@ -70,7 +72,7 @@ def _parse_control_comment(comment):
 
 class Scope():
 	def __init__(self, node):
-		self._is_with_scope = node.kind == 'with'
+		self._is_with_scope = node.kind == tok.WITH
 		self._parent = None
 		self._kids = []
 		self._identifiers = {}
@@ -244,7 +246,7 @@ def _lint_node(node, visitors, report, scope):
 
 	def warn_or_declare(name, node):
 		other = scope.get_identifier(name)
-		if other and other.kind == 'function' and name in other.fn_args:
+		if other and other.kind == tok.FUNCTION and name in other.fn_args:
 			report(node, 'var_hides_arg')
 		elif other:
 			report(node, 'redeclared_var')
@@ -252,34 +254,34 @@ def _lint_node(node, visitors, report, scope):
 			scope.add_declaration(name, node)
 
 	# Let the visitors warn.
-	for kind in (node.kind, '%s:%s' % (node.kind, node.opcode)):
+	for kind in (node.kind, (node.kind, node.opcode)):
 		if kind in visitors:
 			for visitor in visitors[kind]:
 				warning_node = visitor(node)
 				if warning_node:
 					report(warning_node, visitor.im_class.__name__)
 
-	if node.kind == 'name':
-		if node.node_index == 0 and node.parent.kind == 'colon' and node.parent.parent.kind == 'rc':
+	if node.kind == tok.NAME:
+		if node.node_index == 0 and node.parent.kind == tok.COLON and node.parent.parent.kind == tok.RC:
 			pass # left side of object literal
-		elif node.parent.kind == 'catch':
+		elif node.parent.kind == tok.CATCH:
 			scope.add_declaration(node.atom, node)
 		else:
 			scope.add_reference(node.atom, node)
 
 	# Push function identifiers
-	if node.kind == 'function':
+	if node.kind == tok.FUNCTION:
 		if node.fn_name:
 			warn_or_declare(node.fn_name, node)
 		scope = scope.add_scope(node)
 		for var_name in node.fn_args:
 			scope.add_declaration(var_name, node)
-	elif node.kind == 'lexicalscope':
+	elif node.kind == tok.LEXICALSCOPE:
 		scope = scope.add_scope(node)
-	elif node.kind == 'with':
+	elif node.kind == tok.WITH:
 		scope = scope.add_scope(node)
 
-	if node.parent and node.parent.kind == 'var':
+	if node.parent and node.parent.kind == tok.VAR:
 		warn_or_declare(node.atom, node)
 
 	for child in node.kids:
