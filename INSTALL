@@ -1,0 +1,14 @@
+
+BUILDING FROM THE SUBVERSION TRUNK
+* Windows Prequisites:
+ * Visual Studio 2003
+ * Python
+ * MozillaBuild (http://developer.mozilla.org/en/docs/Windows_Build_Prerequisites)
+
+ Launch the MozillaBuild 7.1 batch file. (You may have to run this as an Administrator
+ on Windows Vista.) Run the commands in that shell.
+
+On all platforms:
+ $ make -f Makefile.SpiderMonkey
+ $ python setup.py build
+
