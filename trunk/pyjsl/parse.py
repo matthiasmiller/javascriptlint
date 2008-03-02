@@ -7,6 +7,11 @@ import unittest
 import pyspidermonkey
 from pyspidermonkey import tok, op
 
+_tok_names = dict(zip(
+	[getattr(tok, prop) for prop in dir(tok)],
+	['tok.%s' % prop for prop in dir(tok)]
+))
+
 class NodePos():
 	def __init__(self, line, col):
 		self.line = line
@@ -118,7 +123,7 @@ class _Node():
 		kind = self.kind
 		if not kind:
 			kind = '(none)'
-		return '%s>%s' % (kind, str(self.kids))
+		return '%s>%s' % (_tok_names[kind], str(self.kids))
 
 	def is_equivalent(self, other, are_functions_equiv=False):
 		if not other:
@@ -242,7 +247,7 @@ def _dump_node(node, depth=0):
 	if node is None:
 		print '(none)'
 	else:
-		print node.kind, '\t', node.args
+		print _tok_names[node.kind], '\t', node.args
 		for node in node.kids:
 			_dump_node(node, depth+1)
 
