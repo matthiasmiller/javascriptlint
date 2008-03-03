@@ -75,33 +75,12 @@ class NodeRanges():
 		return bisect.bisect_right(self._offsets, pos) % 2 == 1
 
 class _Node():
-	def __init__(self, kwargs):
-		def _to_node(kid):
-			if kid:
-				return _Node(kid)
-		self.kind = kwargs['type']
-		kwargs['opcode'] = kwargs['opcode']
-		self.opcode = kwargs['opcode']
-		self.kids = tuple([_to_node(kid) for kid in kwargs['kids']])
-		for kid in self.kids:
-			if kid:
-				kid.parent = self
-		if 'atom' in kwargs:
-			self.atom = kwargs['atom']
-		if 'dval' in kwargs:
-			self.dval = kwargs['dval']
-		if 'fn_name' in kwargs:
-			self.fn_name = kwargs['fn_name']
-		if 'fn_args' in kwargs:
-			self.fn_args = kwargs['fn_args']
-		if 'end_comma' in kwargs:
-			self.end_comma = kwargs['end_comma']
+	def __init__(self, kids, parent=None, **kwargs):
+		_to_node = lambda kid: kid and _Node(parent=self, **kid)
+		self.__dict__.update(kwargs)
 		self.args = kwargs
-		self.node_index = kwargs['node_index']
-		self.parent = None
-		self.start_line = kwargs['start_row']
-		self._start_pos = None
-		self._end_pos = None
+		self.parent = parent
+		self.kids = map(_to_node, kids)
 
 	def add_child(self, node):
 		if node:
@@ -110,14 +89,18 @@ class _Node():
 		self.kids.append(node)
 	
 	def start_pos(self):
-		self._start_pos = self._start_pos or \
-						NodePos(self.args['start_row'], self.args['start_col'])
-		return self._start_pos
+		try:
+			return self._start_pos
+		except AttributeError:
+			self._start_pos = NodePos(self._start_line, self._start_col)
+			return self._start_pos
 
 	def end_pos(self):
-		self._end_pos = self._end_pos or \
-						NodePos(self.args['end_row'], self.args['end_col'])
-		return self._end_pos
+		try:
+			return self._end_pos
+		except AttributeError:
+			self._end_pos = NodePos(self._end_line, self._end_col)
+			return self._end_pos
 
 	def __repr__(self):
 		kind = self.kind
@@ -196,14 +179,15 @@ def _parse_comments(script, root, node_positions, ignore_ranges):
 				'type': 'COMMENT',
 				'atom': comment_text,
 				'opcode': opcode,
-				'start_row': start_pos.line,
-				'start_col': start_pos.col,
-				'end_row': end_pos.line,
-				'end_col': end_pos.col,
+				'_start_line': start_pos.line,
+				'_start_col': start_pos.col,
+				'_end_line': end_pos.line,
+				'_end_col': end_pos.col,
+				'parent': None,
 				'kids': [],
 				'node_index': None
 			}
-			comment_node = _Node(kwargs)
+			comment_node = _Node(**kwargs)
 			comments.append(comment_node)
 			pos = match.end()
 		else:
@@ -236,7 +220,7 @@ def parse(script, error_callback):
 
 	roots = pyspidermonkey.traverse(script, _wrapped_callback)
 	assert len(roots) == 1
-	root_node = _Node(roots[0])
+	root_node = _Node(**roots[0])
 	process(root_node)
 
 	comments = _parse_comments(script, root_node, positions, comment_ignore_ranges)
