@@ -173,19 +173,19 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node
 
 	PyTuple_SET_ITEM(tuple, node_offset, kw);
 
-	if (PyDict_SetItemString(kw, "type", Py_BuildValue("i", TOK_TO_NUM(jsnode->pn_type))) == -1)
+	if (PyDict_SetItemString(kw, "kind", Py_BuildValue("i", TOK_TO_NUM(jsnode->pn_type))) == -1)
 		goto fail;
 	if (PyDict_SetItemString(kw, "node_index", Py_BuildValue("i", node_offset)) == -1)
 		goto fail;
 
 	/* pass the position */
-	if (PyDict_SetItemString(kw, "start_row", Py_BuildValue("i", jsnode->pn_pos.begin.lineno-1)) == -1)
+	if (PyDict_SetItemString(kw, "_start_line", Py_BuildValue("i", jsnode->pn_pos.begin.lineno-1)) == -1)
 		goto fail;
-	if (PyDict_SetItemString(kw, "start_col", Py_BuildValue("i", jsnode->pn_pos.begin.index)) == -1)
+	if (PyDict_SetItemString(kw, "_start_col", Py_BuildValue("i", jsnode->pn_pos.begin.index)) == -1)
 		goto fail;
-	if (PyDict_SetItemString(kw, "end_row", Py_BuildValue("i", jsnode->pn_pos.end.lineno-1)) == -1)
+	if (PyDict_SetItemString(kw, "_end_line", Py_BuildValue("i", jsnode->pn_pos.end.lineno-1)) == -1)
 		goto fail;
-	if (PyDict_SetItemString(kw, "end_col", Py_BuildValue("i", jsnode->pn_pos.end.index)) == -1)
+	if (PyDict_SetItemString(kw, "_end_col", Py_BuildValue("i", jsnode->pn_pos.end.index)) == -1)
 		goto fail;
 
 	if ((jsnode->pn_type == TOK_NAME || jsnode->pn_type == TOK_DOT ||
