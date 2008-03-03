@@ -209,8 +209,6 @@ def parse(script, error_callback):
 		for kid in node.kids:
 			if kid:
 				process(kid)
-	def pop():
-		nodes.pop()
 
 	roots = pyspidermonkey.traverse(script, _Node, _wrapped_callback)
 	assert len(roots) == 1
