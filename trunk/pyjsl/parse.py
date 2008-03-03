@@ -26,7 +26,7 @@ class NodePos():
 		if self.col > other.col:
 			return 1
 		return 0
-	def __repr__(self):
+	def __str__(self):
 		return '(line %i, col %i)' % (self.line+1, self.col+1)
 
 class NodePositions():
@@ -102,7 +102,7 @@ class _Node():
 			self._end_pos = NodePos(self._end_line, self._end_col)
 			return self._end_pos
 
-	def __repr__(self):
+	def __str__(self):
 		kind = self.kind
 		if not kind:
 			kind = '(none)'
