@@ -112,6 +112,7 @@ initpyspidermonkey_d() {
  */
 
 typedef struct JSContextData {
+	PyObject* node_class;
 	PyObject* error_callback;
 } JSContextData;
 
@@ -154,7 +155,8 @@ atom_to_string(JSAtom* atom) {
 
 /* returns 0 on success and -1 on failure */
 static int
-traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node_offset) {
+traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* parent, PyObject* tuple, int node_offset) {
+	JSContextData* data = JS_GetContextPrivate(context);
 	PyObject* kw = NULL;
 	PyObject* kids = NULL;
 
@@ -167,39 +169,42 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node
 	}
 
 	/* pass in a dictionary of options */
-	kw = PyDict_New();
+	kw = PyInstance_New(data->node_class, NULL, NULL);
 	if (!kw)
 		goto fail;
 
 	PyTuple_SET_ITEM(tuple, node_offset, kw);
 
-	if (PyDict_SetItemString(kw, "kind", Py_BuildValue("i", TOK_TO_NUM(jsnode->pn_type))) == -1)
+	Py_INCREF(parent);
+	if (PyObject_SetAttrString(kw, "parent", parent) == -1)
 		goto fail;
-	if (PyDict_SetItemString(kw, "node_index", Py_BuildValue("i", node_offset)) == -1)
+	if (PyObject_SetAttrString(kw, "kind", Py_BuildValue("i", TOK_TO_NUM(jsnode->pn_type))) == -1)
+		goto fail;
+	if (PyObject_SetAttrString(kw, "node_index", Py_BuildValue("i", node_offset)) == -1)
 		goto fail;
 
 	/* pass the position */
-	if (PyDict_SetItemString(kw, "_start_line", Py_BuildValue("i", jsnode->pn_pos.begin.lineno-1)) == -1)
+	if (PyObject_SetAttrString(kw, "_start_line", Py_BuildValue("i", jsnode->pn_pos.begin.lineno-1)) == -1)
 		goto fail;
-	if (PyDict_SetItemString(kw, "_start_col", Py_BuildValue("i", jsnode->pn_pos.begin.index)) == -1)
+	if (PyObject_SetAttrString(kw, "_start_col", Py_BuildValue("i", jsnode->pn_pos.begin.index)) == -1)
 		goto fail;
-	if (PyDict_SetItemString(kw, "_end_line", Py_BuildValue("i", jsnode->pn_pos.end.lineno-1)) == -1)
+	if (PyObject_SetAttrString(kw, "_end_line", Py_BuildValue("i", jsnode->pn_pos.end.lineno-1)) == -1)
 		goto fail;
-	if (PyDict_SetItemString(kw, "_end_col", Py_BuildValue("i", jsnode->pn_pos.end.index)) == -1)
+	if (PyObject_SetAttrString(kw, "_end_col", Py_BuildValue("i", jsnode->pn_pos.end.index)) == -1)
 		goto fail;
 
 	if ((jsnode->pn_type == TOK_NAME || jsnode->pn_type == TOK_DOT ||
 		jsnode->pn_type == TOK_STRING) && ATOM_IS_STRING(jsnode->pn_atom)) {
 		/* Convert the atom to a string. */
-		if (PyDict_SetItemString(kw, "atom", atom_to_string(jsnode->pn_atom)) == -1)
+		if (PyObject_SetAttrString(kw, "atom", atom_to_string(jsnode->pn_atom)) == -1)
 			goto fail;
 	}
 
-	if (PyDict_SetItemString(kw, "opcode", Py_BuildValue("i", OPCODE_TO_NUM(jsnode->pn_op))) == -1)
+	if (PyObject_SetAttrString(kw, "opcode", Py_BuildValue("i", OPCODE_TO_NUM(jsnode->pn_op))) == -1)
 		goto fail;
 
 	if (jsnode->pn_type == TOK_NUMBER) {
-		if (PyDict_SetItemString(kw, "dval", Py_BuildValue("d", jsnode->pn_dval)) == -1)
+		if (PyObject_SetAttrString(kw, "dval", Py_BuildValue("d", jsnode->pn_dval)) == -1)
 			goto fail;
 	}
 
@@ -221,7 +226,7 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node
 			Py_INCREF(Py_None);
 			fn_name = Py_None;
 		}
-		if (PyDict_SetItemString(kw, "fn_name", fn_name) == -1)
+		if (PyObject_SetAttrString(kw, "fn_name", fn_name) == -1)
 			goto fail;
 
 		/* get the function arguments */
@@ -251,19 +256,19 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node
 			name = atom_to_string(JSID_TO_ATOM(scope_property->id));
 			PyTuple_SET_ITEM(fn_args, (uint16)scope_property->shortid, name);
 		}
-		if (PyDict_SetItemString(kw, "fn_args", fn_args) == -1)
+		if (PyObject_SetAttrString(kw, "fn_args", fn_args) == -1)
 			goto fail;
 	}
 	else if (jsnode->pn_type == TOK_RB) {
 		PyObject* end_comma = PyBool_FromLong(jsnode->pn_extra & PNX_ENDCOMMA);
-		if (PyDict_SetItemString(kw, "end_comma", end_comma) == -1)
+		if (PyObject_SetAttrString(kw, "end_comma", end_comma) == -1)
 			goto fail;
 	}
 
 	switch (jsnode->pn_arity) {
 	case PN_FUNC:
 		kids = PyTuple_New(1);
-		if (traverse_node(context, jsnode->pn_body, kids, 0) == -1)
+		if (traverse_node(context, jsnode->pn_body, kw, kids, 0) == -1)
 			return -1;
 		break;
 
@@ -272,7 +277,7 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node
 		int i;
 		kids = PyTuple_New(jsnode->pn_count);
 		for (i = 0, p = jsnode->pn_head; p; p = p->pn_next, i++) {
-			if (traverse_node(context, p, kids, i) == -1)
+			if (traverse_node(context, p, kw, kids, i) == -1)
 				return -1;
 		}
 	}
@@ -280,31 +285,31 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node
 
 	case PN_TERNARY:
 		kids = PyTuple_New(3);
-		if (traverse_node(context, jsnode->pn_kid1, kids, 0) == -1)
+		if (traverse_node(context, jsnode->pn_kid1, kw, kids, 0) == -1)
 			return -1;
-		if (traverse_node(context, jsnode->pn_kid2, kids, 1) == -1)
+		if (traverse_node(context, jsnode->pn_kid2, kw, kids, 1) == -1)
 			return -1;
-		if (traverse_node(context, jsnode->pn_kid3, kids, 2) == -1)
+		if (traverse_node(context, jsnode->pn_kid3, kw, kids, 2) == -1)
 			return -1;
 		break;
 
 	case PN_BINARY:
 		kids = PyTuple_New(2);
-		if (traverse_node(context, jsnode->pn_left, kids, 0) == -1)
+		if (traverse_node(context, jsnode->pn_left, kw, kids, 0) == -1)
 			return -1;
-		if (traverse_node(context, jsnode->pn_right, kids, 1) == -1)
+		if (traverse_node(context, jsnode->pn_right, kw, kids, 1) == -1)
 			return -1;
 		break;
 
 	case PN_UNARY:
 		kids = PyTuple_New(1);
-		if (traverse_node(context, jsnode->pn_kid, kids, 0) == -1)
+		if (traverse_node(context, jsnode->pn_kid, kw, kids, 0) == -1)
 			return -1;
 		break;
 
 	case PN_NAME:
 		kids = PyTuple_New(1);
-		if (traverse_node(context, jsnode->pn_expr, kids, 0) == -1)
+		if (traverse_node(context, jsnode->pn_expr, kw, kids, 0) == -1)
 			return -1;
 		break;
 
@@ -313,7 +318,7 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* tuple, int node
 		break;
 	}
 
-	if (PyDict_SetItemString(kw, "kids", kids) == -1)
+	if (PyObject_SetAttrString(kw, "kids", kids) == -1)
 		goto fail;
 
 	return 0;
@@ -346,8 +351,13 @@ module_traverse(PyObject *self, PyObject *args) {
 	error = "encountered an unknown error";
 
 	/* validate arguments */
-	if (!PyArg_ParseTuple(args, "sO", &m.script, &m.ctx_data.error_callback))
+	if (!PyArg_ParseTuple(args, "sOO", &m.script, &m.ctx_data.node_class, &m.ctx_data.error_callback))
 		return NULL;
+
+	if (!PyCallable_Check(m.ctx_data.node_class)) {
+		PyErr_SetString(PyExc_ValueError, "\"node_class\" must be callable");
+		return NULL;
+	}
 
 	if (!PyCallable_Check(m.ctx_data.error_callback)) {
 		PyErr_SetString(PyExc_ValueError, "\"error\" must be callable");
@@ -399,7 +409,7 @@ module_traverse(PyObject *self, PyObject *args) {
 	}
 
 	m.kids = PyTuple_New(1);
-	if (traverse_node(m.context, m.jsnode, m.kids, 0) == -1) {
+	if (traverse_node(m.context, m.jsnode, Py_None, m.kids, 0) == -1) {
 		error = "";
 		goto cleanup;
 	}
