@@ -11,6 +11,10 @@ _tok_names = dict(zip(
 	[getattr(tok, prop) for prop in dir(tok)],
 	['tok.%s' % prop for prop in dir(tok)]
 ))
+_op_names = dict(zip(
+	[getattr(op, prop) for prop in dir(op)],
+	['op.%s' % prop for prop in dir(op)]
+))
 
 class NodePos():
 	def __init__(self, line, col):
@@ -223,7 +227,7 @@ def _dump_node(node, depth=0):
 	if node is None:
 		print '(none)'
 	else:
-		print '%s\t%s, %s' % (_tok_names[node.kind], node.start_pos(), node.end_pos())
+		print '%s, %s\tfrom %s to %s' % (_tok_names[node.kind], _op_names[node.opcode], node.start_pos(), node.end_pos())
 		for node in node.kids:
 			_dump_node(node, depth+1)
 
