@@ -75,13 +75,6 @@ class NodeRanges():
 		return bisect.bisect_right(self._offsets, pos) % 2 == 1
 
 class _Node():
-	def __init__(self, kids, parent=None, **kwargs):
-		_to_node = lambda kid: kid and _Node(parent=self, **kid)
-		self.__dict__.update(kwargs)
-		self.args = kwargs
-		self.parent = parent
-		self.kids = map(_to_node, kids)
-
 	def add_child(self, node):
 		if node:
 			node.node_index = len(self.kids)
@@ -187,7 +180,8 @@ def _parse_comments(script, root, node_positions, ignore_ranges):
 				'kids': [],
 				'node_index': None
 			}
-			comment_node = _Node(**kwargs)
+			comment_node = _Node()
+			comment_node.__dict__.update(kwargs)
 			comments.append(comment_node)
 			pos = match.end()
 		else:
@@ -218,9 +212,9 @@ def parse(script, error_callback):
 	def pop():
 		nodes.pop()
 
-	roots = pyspidermonkey.traverse(script, _wrapped_callback)
+	roots = pyspidermonkey.traverse(script, _Node, _wrapped_callback)
 	assert len(roots) == 1
-	root_node = _Node(**roots[0])
+	root_node = roots[0]
 	process(root_node)
 
 	comments = _parse_comments(script, root_node, positions, comment_ignore_ranges)
@@ -231,7 +225,7 @@ def _dump_node(node, depth=0):
 	if node is None:
 		print '(none)'
 	else:
-		print _tok_names[node.kind], '\t', node.args
+		print '%s\t%s, %s' % (_tok_names[node.kind], node.start_pos(), node.end_pos())
 		for node in node.kids:
 			_dump_node(node, depth+1)
 
