@@ -50,14 +50,14 @@ JS_STATIC_ASSERT(ARRAY_COUNT(error_names) == JSErr_Limit);
  */
 
 static PyObject*
-module_traverse(PyObject *self, PyObject *args);
+module_parse(PyObject *self, PyObject *args);
 
 static PyObject*
 is_compilable_unit(PyObject *self, PyObject *args);
 
 static PyMethodDef module_methods[] = {
-	 {"traverse", module_traverse, METH_VARARGS,
-	  "Parses \"script\" and calls \"push\" and \"pop\" for each node."},
+	 {"parse", module_parse, METH_VARARGS,
+	  "Parses \"script\" and returns a tree of \"node_class\"."},
 
 	 {"is_compilable_unit", is_compilable_unit, METH_VARARGS,
 		"Returns True if \"script\" is a compilable unit."},
@@ -160,8 +160,8 @@ atom_to_string(JSAtom* atom) {
 }
 
 /* returns 0 on success and -1 on failure */
-static int
-traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* parent, PyObject* tuple, int node_offset) {
+static PyObject*
+jsnode_to_pynode(JSContext* context, JSParseNode* jsnode) {
 	JSContextData* data = JS_GetContextPrivate(context);
 	PyObject* pynode = NULL;
 	PyObject* kids = NULL;
@@ -170,8 +170,7 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* parent, PyObjec
 
 	if (!jsnode) {
 		Py_INCREF(Py_None);
-		PyTuple_SET_ITEM(tuple, node_offset, Py_None);
-		return 0;
+		return Py_None;
 	}
 
 	/* pass in a dictionary of options */
@@ -179,14 +178,13 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* parent, PyObjec
 	if (!pynode)
 		goto fail;
 
-	PyTuple_SET_ITEM(tuple, node_offset, pynode);
-
-	Py_INCREF(parent);
-	if (PyObject_SetAttrString(pynode, "parent", parent) == -1)
+	Py_INCREF(Py_None);
+	if (PyObject_SetAttrString(pynode, "parent", Py_None) == -1)
+		goto fail;
+	Py_INCREF(Py_None);
+	if (PyObject_SetAttrString(pynode, "node_index", Py_None) == -1)
 		goto fail;
 	if (PyObject_SetAttrString(pynode, "kind", Py_BuildValue("i", TOK_TO_NUM(jsnode->pn_type))) == -1)
-		goto fail;
-	if (PyObject_SetAttrString(pynode, "node_index", Py_BuildValue("i", node_offset)) == -1)
 		goto fail;
 
 	/* pass the position */
@@ -274,8 +272,7 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* parent, PyObjec
 	switch (jsnode->pn_arity) {
 	case PN_FUNC:
 		kids = PyTuple_New(1);
-		if (traverse_node(context, jsnode->pn_body, pynode, kids, 0) == -1)
-			return -1;
+		PyTuple_SET_ITEM(kids, 0, jsnode_to_pynode(context, jsnode->pn_body));
 		break;
 
 	case PN_LIST: {
@@ -283,40 +280,32 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* parent, PyObjec
 		int i;
 		kids = PyTuple_New(jsnode->pn_count);
 		for (i = 0, p = jsnode->pn_head; p; p = p->pn_next, i++) {
-			if (traverse_node(context, p, pynode, kids, i) == -1)
-				return -1;
+			PyTuple_SET_ITEM(kids, i, jsnode_to_pynode(context, p));
 		}
 	}
 	break;
 
 	case PN_TERNARY:
 		kids = PyTuple_New(3);
-		if (traverse_node(context, jsnode->pn_kid1, pynode, kids, 0) == -1)
-			return -1;
-		if (traverse_node(context, jsnode->pn_kid2, pynode, kids, 1) == -1)
-			return -1;
-		if (traverse_node(context, jsnode->pn_kid3, pynode, kids, 2) == -1)
-			return -1;
+		PyTuple_SET_ITEM(kids, 0, jsnode_to_pynode(context, jsnode->pn_kid1));
+		PyTuple_SET_ITEM(kids, 1, jsnode_to_pynode(context, jsnode->pn_kid2));
+		PyTuple_SET_ITEM(kids, 2, jsnode_to_pynode(context, jsnode->pn_kid3));
 		break;
 
 	case PN_BINARY:
 		kids = PyTuple_New(2);
-		if (traverse_node(context, jsnode->pn_left, pynode, kids, 0) == -1)
-			return -1;
-		if (traverse_node(context, jsnode->pn_right, pynode, kids, 1) == -1)
-			return -1;
+		PyTuple_SET_ITEM(kids, 0, jsnode_to_pynode(context, jsnode->pn_left));
+		PyTuple_SET_ITEM(kids, 1, jsnode_to_pynode(context, jsnode->pn_right));
 		break;
 
 	case PN_UNARY:
 		kids = PyTuple_New(1);
-		if (traverse_node(context, jsnode->pn_kid, pynode, kids, 0) == -1)
-			return -1;
+		PyTuple_SET_ITEM(kids, 0, jsnode_to_pynode(context, jsnode->pn_kid));
 		break;
 
 	case PN_NAME:
 		kids = PyTuple_New(1);
-		if (traverse_node(context, jsnode->pn_expr, pynode, kids, 0) == -1)
-			return -1;
+		PyTuple_SET_ITEM(kids, 0, jsnode_to_pynode(context, jsnode->pn_expr));
 		break;
 
 	case PN_NULLARY:
@@ -324,23 +313,43 @@ traverse_node(JSContext* context, JSParseNode* jsnode, PyObject* parent, PyObjec
 		break;
 	}
 
+	if (!kids)
+		goto fail;
+
 	if (PyObject_SetAttrString(pynode, "kids", kids) == -1)
 		goto fail;
 
-	return 0;
+	{
+		int i;
+		for (i = 0; i < PyTuple_GET_SIZE(kids); i++) {
+			PyObject* kid = PyTuple_GET_ITEM(kids, i);
+			if (!kid)
+				goto fail;
+			if (kid == Py_None)
+				continue;
+
+			Py_INCREF(pynode);
+			if (PyObject_SetAttrString(kid, "parent", pynode) == -1)
+				goto fail;
+			if (PyObject_SetAttrString(kid, "node_index", Py_BuildValue("i", i)) == -1)
+				goto fail;
+		}
+	}
+
+	return pynode;
 
 fail:
 	if (pynode) {
 		Py_XDECREF(pynode);
 	}
-	return -1;
+	return NULL;
 }
 
 static PyObject*
-module_traverse(PyObject *self, PyObject *args) {
+module_parse(PyObject *self, PyObject *args) {
 	struct {
 		const char* script;
-		PyObject* kids;
+		PyObject* pynode;
 
 		JSRuntime* runtime;
 		JSContext* context;
@@ -414,8 +423,8 @@ module_traverse(PyObject *self, PyObject *args) {
 		goto cleanup;
 	}
 
-	m.kids = PyTuple_New(1);
-	if (traverse_node(m.context, m.jsnode, Py_None, m.kids, 0) == -1) {
+	m.pynode = jsnode_to_pynode(m.context, m.jsnode);
+	if (!m.pynode) {
 		error = "";
 		goto cleanup;
 	}
@@ -434,8 +443,7 @@ cleanup:
 		}
 		return NULL;
 	}
-	Py_INCREF(m.kids);
-	return m.kids;
+	return m.pynode;
 }
 
 static PyObject*
