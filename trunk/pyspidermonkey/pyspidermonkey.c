@@ -52,9 +52,15 @@ JS_STATIC_ASSERT(ARRAY_COUNT(error_names) == JSErr_Limit);
 static PyObject*
 module_traverse(PyObject *self, PyObject *args);
 
+static PyObject*
+is_compilable_unit(PyObject *self, PyObject *args);
+
 static PyMethodDef module_methods[] = {
 	 {"traverse", module_traverse, METH_VARARGS,
 	  "Parses \"script\" and calls \"push\" and \"pop\" for each node."},
+
+	 {"is_compilable_unit", is_compilable_unit, METH_VARARGS,
+		"Returns True if \"script\" is a compilable unit."},
 
 	 {NULL, NULL, 0, NULL}		  /* Sentinel */
 };
@@ -430,5 +436,69 @@ cleanup:
 	}
 	Py_INCREF(m.kids);
 	return m.kids;
+}
+
+static PyObject*
+is_compilable_unit(PyObject *self, PyObject *args) {
+	struct {
+		const char* script;
+		JSRuntime* runtime;
+		JSContext* context;
+		JSObject* global;
+		JSBool is_compilable;
+	} m;
+	const char* error;
+
+	memset(&m, 0, sizeof(m));
+	error = "encountered an unknown error";
+
+	if (!PyArg_ParseTuple(args, "s", &m.script))
+		return NULL;
+
+	m.runtime = JS_NewRuntime(8L * 1024L * 1024L);
+	if (m.runtime == NULL) {
+		error = "cannot create runtime";
+		goto cleanup;
+	}
+
+	m.context = JS_NewContext(m.runtime, 8192);
+	if (m.context == NULL) {
+		error = "cannot create context";
+		goto cleanup;
+	}
+
+	m.global = JS_NewObject(m.context, NULL, NULL, NULL);
+	if (m.global == NULL) {
+		error = "cannot create global object";
+		goto cleanup;
+	}
+
+	if (!JS_InitStandardClasses(m.context, m.global)) {
+		error = "cannot initialize standard classes";
+		goto cleanup;
+	}
+
+	m.is_compilable = JS_BufferIsCompilableUnit(m.context, m.global,
+												m.script, strlen(m.script));
+	error = NULL;
+
+cleanup:
+	if (m.context)
+		JS_DestroyContext(m.context);
+	if (m.runtime)
+		JS_DestroyRuntime(m.runtime);
+
+	if (error) {
+		PyErr_SetString(PyExc_StandardError, error);
+		return NULL;
+	}
+	if (m.is_compilable) {
+		Py_INCREF(Py_True);
+		return Py_True;
+	}
+	else {
+		Py_INCREF(Py_False);
+		return Py_False;
+	}
 }
 
