@@ -306,14 +306,29 @@ class TestNodeRanges(unittest.TestCase):
 		r = NodeRanges()
 		r.add(5, 10)
 		r.add(15, 15)
-		assert not r.has(4) 
-		assert r.has(5) 
-		assert r.has(6) 
-		assert r.has(9) 
-		assert r.has(10) 
-		assert not r.has(14) 
-		assert r.has(15) 
-		assert not r.has(16) 
+		assert not r.has(4)
+		assert r.has(5)
+		assert r.has(6)
+		assert r.has(9)
+		assert r.has(10)
+		assert not r.has(14)
+		assert r.has(15)
+		assert not r.has(16)
+
+class TestCompilableUnit(unittest.TestCase):
+	def test(self):
+		tests = (
+			('var s = "', False),
+			('bogon()', True),
+			('int syntax_error;', True),
+			('a /* b', False),
+			('re = /.*', False),
+			('{ // missing curly', False)
+		)
+		for text, is_compilable_unit in tests:
+			self.assertEquals(pyspidermonkey.is_compilable_unit(text),
+								is_compilable_unit)
+
 if __name__ == '__main__':
 	unittest.main()
 
