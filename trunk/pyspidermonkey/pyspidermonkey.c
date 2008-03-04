@@ -66,7 +66,7 @@ static PyMethodDef module_methods[] = {
 };
 
 PyMODINIT_FUNC
-initpyspidermonkey() {
+initpyspidermonkey(void) {
 	PyObject* module;
 	PyObject* class;
 	PyObject* tok;
@@ -109,7 +109,7 @@ initpyspidermonkey() {
 }
 
 PyMODINIT_FUNC
-initpyspidermonkey_d() {
+initpyspidermonkey_d(void) {
 	initpyspidermonkey();
 }
 
