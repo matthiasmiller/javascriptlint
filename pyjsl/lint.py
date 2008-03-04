@@ -3,7 +3,7 @@ import os.path
 import re
 
 import conf
-import parse
+import jsparse
 import visitation
 import warnings
 import util
@@ -149,7 +149,7 @@ def lint_files(paths, lint_error, conf=conf.Conf()):
 def _lint_script(script, script_cache, lint_error, conf, import_callback):
 	def parse_error(row, col, msg):
 		if not msg in ('redeclared_var', 'var_hides_arg'):
-			parse_errors.append((parse.NodePos(row, col), msg))
+				parse_errors.append((jsparse.NodePos(row, col), msg))
 
 	def report(node, errname):
 		_report(node.start_pos(), errname, True)
@@ -169,7 +169,7 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
 		return lint_error(pos.line, pos.col, errname)
 
 	parse_errors = []
-	root, comments = parse.parse(script, parse_error)
+	root, comments = jsparse.parse(script, parse_error)
 	ignores = []
 	start_ignore = None
 	declares = []
