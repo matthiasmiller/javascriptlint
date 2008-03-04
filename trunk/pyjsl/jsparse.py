@@ -212,9 +212,7 @@ def parse(script, error_callback):
 	def pop():
 		nodes.pop()
 
-	roots = pyspidermonkey.traverse(script, _Node, _wrapped_callback)
-	assert len(roots) == 1
-	root_node = roots[0]
+	root_node = pyspidermonkey.parse(script, _Node, _wrapped_callback)
 	process(root_node)
 
 	comments = _parse_comments(script, root_node, positions, comment_ignore_ranges)
