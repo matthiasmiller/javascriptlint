@@ -14,7 +14,7 @@ else:
 	sys.path.append(setup.get_lib_path())
 
 import pyjsl.conf
-import pyjsl.parse
+import pyjsl.jsparse
 import pyjsl.util
 import test
 
@@ -52,7 +52,7 @@ def run_tests():
 def _dump(paths):
 	for path in paths:
 		script = pyjsl.util.readfile(path)
-		pyjsl.parse.dump_tree(script)
+		pyjsl.jsparse.dump_tree(script)
 
 def _lint(paths, conf):
 	def lint_error(path, line, col, errname):
@@ -124,7 +124,7 @@ if __name__ == '__main__':
 		if opt in ('-t', '--test'):
 			profile_func(run_tests)
 		if opt in ('--unittest',):
-			unittest.main(pyjsl.parse, argv=sys.argv[:1])
+			unittest.main(pyjsl.jsparse, argv=sys.argv[:1])
 		if opt in ('--profile',):
 			profile_func = profile_enabled
 		if opt in ('--conf',):
