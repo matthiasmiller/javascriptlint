@@ -28,6 +28,6 @@ function control_comments() {
     /*jsl:end*/
 
     /* illegal - don't forget to end */
-    /*jsl:ignore*/
+    /*jsl:ignore*/ /*warning:mismatch_ctrl_comments*/
 }
-/*warning:mismatch_ctrl_comments*/
+
