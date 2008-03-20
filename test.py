@@ -54,9 +54,13 @@ def run(path):
 
 	errors = []
 	if expected_warnings:
-		errors.append('Expected warnings: ' + str(expected_warnings))
+		errors.append('Expected warnings:')
+		for line, warning in expected_warnings:
+			errors.append('\tline %i: %s' % (line+1, warning))
 	if unexpected_warnings:
-		errors.append('Unexpected warnings: ' + str(unexpected_warnings))
+		errors.append('Unexpected warnings:')
+		for line, warning in unexpected_warnings:
+			errors.append('\tline %i: %s' % (line+1, warning))
 	if errors:
 		raise TestError, '\n'.join(errors)
 
