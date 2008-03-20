@@ -12,7 +12,7 @@ _tok_names = dict(zip(
 	['tok.%s' % prop for prop in dir(tok)]
 ))
 
-class NodePos():
+class NodePos:
 	def __init__(self, line, col):
 		self.line = line
 		self.col = col
@@ -29,7 +29,7 @@ class NodePos():
 	def __str__(self):
 		return '(line %i, col %i)' % (self.line+1, self.col+1)
 
-class NodePositions():
+class NodePositions:
 	" Given a string, allows [x] lookups for NodePos line and column numbers."
 	def __init__(self, text):
 		# Find the length of each line and incrementally sum all of the lengths
@@ -55,7 +55,7 @@ class NodePositions():
 		lines[0] = lines[0][start.col:]
 		return ''.join(lines)
 
-class NodeRanges():
+class NodeRanges:
 	def __init__(self):
 		self._offsets = []
 	def add(self, start, end):
@@ -74,7 +74,7 @@ class NodeRanges():
 	def has(self, pos):
 		return bisect.bisect_right(self._offsets, pos) % 2 == 1
 
-class _Node():
+class _Node:
 	def add_child(self, node):
 		if node:
 			node.node_index = len(self.kids)

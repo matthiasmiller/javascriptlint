@@ -8,7 +8,7 @@ class ConfError(Exception):
 		self.lineno = None
 		self.path = None
 
-class Setting():
+class Setting:
 	wants_parm = False
 	wants_dir = False
 
@@ -48,7 +48,7 @@ class ProcessSetting(Setting):
 			parm = os.path.join(dir, parm)
 		self.value.append((self._recurse.value, parm))
 
-class Conf():
+class Conf:
 	def __init__(self):
 		recurse = BooleanSetting(False) 
 		self._settings = {
@@ -94,7 +94,8 @@ class Conf():
 		assert not '\n' in line
 
 		# Allow comments
-		line = line.partition('#')[0]
+		if '#' in line:
+			line = line[:line.find('#')]
 		line = line.rstrip()
 		if not line:
 			return
