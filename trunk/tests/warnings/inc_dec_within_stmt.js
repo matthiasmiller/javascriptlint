@@ -55,7 +55,6 @@ function inc_dec_within_stmt() {
             /*jsl:end*/
         } while (x > 0);
 
-        Label--: /*warning:bad_label*/
         do {
            x++;
         } while (x < 0);
