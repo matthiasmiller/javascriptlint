@@ -43,7 +43,6 @@ def run_tests():
 		if file.endswith('.htm') or file.endswith('.html'):
 			continue #TODO
 		elif file.endswith('.js'):
-			print file
 			try:
 				test.run(file)
 			except test.TestError, error:
