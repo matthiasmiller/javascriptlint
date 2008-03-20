@@ -66,6 +66,8 @@ def _parse_control_comment(comment):
 		keyword = control_comment.lower()
 	else:
 		keyword = control_comment.lower().split()[0]
+		if not keyword in control_comments:
+			return None
 
 	parms = control_comment[len(keyword):].strip()
 	return (comment, keyword, parms)
