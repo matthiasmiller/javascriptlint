@@ -89,12 +89,28 @@ def _get_exit_points(node):
 	elif node.kind == tok.TRY:
 		try_, catch_, finally_ = node.kids
 
+		assert catch_.kind == tok.RESERVED
+		catch_, = catch_.kids
+		assert catch_.kind == tok.LEXICALSCOPE
+		catch_, = catch_.kids
+		assert catch_.kind == tok.CATCH
+		ignored, ignored, catch_ = catch_.kids
+		assert catch_.kind == tok.LC
+
 		exit_points = _get_exit_points(try_) | _get_exit_points(catch_)
 		if finally_:
-			# Always if the finally has an exit point
-			if None in exit_points:
-				exit_points.remove(None)
-			exit_points |= _get_exit_points(finally_)
+			finally_exit_points = _get_exit_points(finally_)
+			if None in finally_exit_points:
+				# The finally statement does not add a missing exit point.
+				finally_exit_points.remove(None)
+			else:
+				# If the finally statement always returns, the other
+				# exit points are irrelevant.
+				if None in exit_points:
+					exit_points.remove(None)
+
+			exit_points |= finally_exit_points
+
 	else:
 		exit_points = set([None])
 
@@ -311,7 +327,8 @@ class missing_break:
 		if not case_contents.kids:
 			return
 		if None in _get_exit_points(case_contents):
-			return node
+			# Show the warning on the *next* node.
+			return node.parent.kids[node.node_index+1]
 
 class missing_break_for_last_case:
 	'missing break statement for last case in switch'

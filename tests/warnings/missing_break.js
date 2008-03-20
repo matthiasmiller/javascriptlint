@@ -52,7 +52,7 @@ function missing_break() {
         }
 
       case 6: /*warning:missing_break*/
-        /*ok; finally statement never called*/
+        /*ok; finally statement does not affect it */
         try {
             i--;
             break;
@@ -77,6 +77,19 @@ function missing_break() {
         finally {
             i++;
             break;
+        }
+
+      case 8:
+        /*ok; return statement in finally*/
+        try {
+            i--;
+        }
+        catch (err) {
+            s = null;
+        }
+        finally {
+            i++;
+            return i;
         }
 
       default:
