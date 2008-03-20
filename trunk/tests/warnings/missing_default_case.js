@@ -3,10 +3,10 @@ function missing_default_case() {
     var i, s;
 
     /*missing default case*/
-    switch (i) {
+    switch (i) { /*warning:missing_default_case*/
       case 1:
         return 1;
-    } /*warning:missing_default_case*/
+    }
 
     /* ambivalence - allow fallthru but don't enforce it */
     switch (i) {
