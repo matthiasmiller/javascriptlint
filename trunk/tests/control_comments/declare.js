@@ -1,10 +1,10 @@
 /*jsl:option explicit*/
 function declare() {
     window.alert('http://www.javascriptlint.com/');
-    /*jsl:declare window*/
+    /*jsl:declare window*/ /*warning:redeclared_var*/
 
     /* redeclaration only at local scope */
-    var window;/*warning:redeclared_var*/
+    var window;
     var document;
     /*jsl:declare document*//*warning:redeclared_var*/
 }
@@ -17,8 +17,8 @@ window.alert('JavaScript Lint');/*warning:undeclared_identifier*/
 
 document.write('<a href="http://www.javascriptlint.com/">JavaScript Lint</a>');
 
-/*jsl:declare document*/
-function document()/*warning:redeclared_var*/
+/*jsl:declare document*/ /*warning:redeclared_var*/
+function document()
 {
 }
 

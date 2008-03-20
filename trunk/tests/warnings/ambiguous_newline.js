@@ -218,15 +218,15 @@ function ambiguous_newline() {
         + "!"; /*warning:ambiguous_newline*/
 
     /* illegal: ++ */
-    b = i++
-        || true; /*warning:ambiguous_newline*//*warning:inc_dec_within_stmt*/
+    b = i++ /*warning:inc_dec_within_stmt*/
+        || true; /*warning:ambiguous_newline*/
 
     /* illegal: -- */
-    s = i--
-        + " = i"; /*warning:ambiguous_newline*//*warning:inc_dec_within_stmt*/
+    s = i-- /*warning:inc_dec_within_stmt*/
+        + " = i"; /*warning:ambiguous_newline*/
 
     /* legal */
-    if (true)
+    if (true) /*warning:meaningless_block*/
     {
         i++;
     }
