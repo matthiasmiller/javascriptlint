@@ -70,7 +70,7 @@ def _parse_control_comment(comment):
 	parms = control_comment[len(keyword):].strip()
 	return (comment, keyword, parms)
 
-class Scope():
+class Scope:
 	def __init__(self, node):
 		self._is_with_scope = node.kind == tok.WITH
 		self._parent = None
