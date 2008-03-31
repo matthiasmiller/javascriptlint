@@ -4,7 +4,7 @@ import warnings
 
 class ConfError(Exception):
     def __init__(self, error):
-        Exception.__init__(error)
+        Exception.__init__(self, error)
         self.lineno = None
         self.path = None
 
