@@ -4,9 +4,9 @@ function default_not_at_end() {
 
     /*default case at top*/
     switch (i) {
-	  default:
-		i++;
-		break;
+      default:
+        i++;
+        break;
       case 1: /*warning:default_not_at_end*/
         return 1;
     }

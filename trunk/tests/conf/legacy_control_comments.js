@@ -2,7 +2,7 @@
 
 /* Make sure that legacy control comments aren't respected */
 function legacy_control_comments() {
-	/*@ignore@*/
-	; /*warning:empty_statement*/
-	/*@end@*/
+    /*@ignore@*/
+    ; /*warning:empty_statement*/
+    /*@end@*/
 }
