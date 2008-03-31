@@ -1,10 +1,10 @@
 #!/usr/bin/python
 import codecs
-import getopt
 import glob
 import os
 import sys
 import unittest
+from optparse import OptionParser
 
 try:
     import setup
@@ -95,46 +95,45 @@ def profile_enabled(func, *args, **kwargs):
 def profile_disabled(func, *args, **kwargs):
     func(*args, **kwargs)
 
-def usage():
-    print """
-Usage:
-   jsl [files]
-   --help (-h)  print this help
-   --test (-t)  run tests
-   --dump=      dump this script
-"""
-
 if __name__ == '__main__':
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], 'ht:v', ['conf=', 'help', 'test', 'dump', 'unittest', 'profile'])
-    except getopt.GetoptError:
-        usage()
-        sys.exit(2)
+    parser = OptionParser(usage="%prog [options] [files]")
+    add = parser.add_option
+    add("--conf", dest="conf", metavar="CONF",
+        help="set the conf file")
+    add("-t", "--test", dest="test", action="store_true", default=False,
+        help="run the javascript tests")
+    add("--profile", dest="profile", action="store_true", default=False,
+        help="turn on hotshot profiling")
+    add("--dump", dest="dump", action="store_true", default=False,
+        help="dump this script")
+    add("--unittest", dest="unittest", action="store_true", default=False,
+        help="run the python unittests")
+    options, args = parser.parse_args()
 
-    dump = False
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit()
+
     conf = pyjsl.conf.Conf()
+    if options.conf:
+        conf.loadfile(options.conf)
+
     profile_func = profile_disabled
-    for opt, val in opts:
-        if opt in ('-h', '--help'):
-            usage()
-            sys.exit()
-        if opt in ('--dump',):
-            dump = True
-        if opt in ('-t', '--test'):
-            profile_func(run_tests)
-        if opt in ('--unittest',):
-            unittest.main(pyjsl.jsparse, argv=sys.argv[:1])
-        if opt in ('--profile',):
-            profile_func = profile_enabled
-        if opt in ('--conf',):
-            conf.loadfile(val)
+    if options.profile:
+        profile_func = profile_enabled
+
+    if options.unittest:
+        unittest.main(pyjsl.jsparse, argv=sys.argv[:1])
+
+    if options.test:
+        profile_func(run_tests)
 
     paths = []
     for recurse, path in conf['paths']:
         paths.extend(_resolve_paths(path, recurse))
     for arg in args:
         paths.extend(_resolve_paths(arg, False))
-    if dump:
+    if options.dump:
         profile_func(_dump, paths)
     else:
         profile_func(_lint, paths, conf)
