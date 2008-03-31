@@ -13,6 +13,7 @@ _tok_names = dict(zip(
 ))
 
 class NodePos:
+    " Represents zero-based line and column number. "
     def __init__(self, line, col):
         self.line = line
         self.col = col
