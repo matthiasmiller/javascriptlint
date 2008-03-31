@@ -2,6 +2,7 @@
 
 > All lines should be 79 characters or less
 > Follow http://www.python.org/dev/peps/pep-0008/ as much as possible.
+> Target Python 2.4.
 
 
 ** TODO
