@@ -1,9 +1,7 @@
 ** STYLE GUIDELINES
 
-> Use tabs instead of spaces (for now)
 > All lines should be 79 characters or less
-> For everything else, follow http://www.python.org/dev/peps/pep-0008/ as much
-  as possible.
+> Follow http://www.python.org/dev/peps/pep-0008/ as much as possible.
 
 
 ** TODO
@@ -23,9 +21,9 @@ version number. js-X.X.X is the directory containing the new version of
 SpiderMonkey. Use a relative path for pretty commit messages.
  
 svn_load_dirs.pl \
-	-t X.X.X \
-	-p svn_load_dirs.conf \
-	https://javascriptlint.svn.sourceforge.net/svnroot/javascriptlint/vendorsrc/Mozilla.org/js \
-	current \
-	js-X.X.X
+    -t X.X.X \
+    -p svn_load_dirs.conf \
+    https://javascriptlint.svn.sourceforge.net/svnroot/javascriptlint/vendorsrc/Mozilla.org/js \
+    current \
+    js-X.X.X
 
