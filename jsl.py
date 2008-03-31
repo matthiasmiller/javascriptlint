@@ -123,7 +123,7 @@ if __name__ == '__main__':
         profile_func = profile_enabled
 
     if options.unittest:
-        unittest.main(pyjsl.jsparse, argv=sys.argv[:1])
+        unittest.main(pyjsl.jsparse, argv=[sys.argv[0]])
 
     if options.test:
         profile_func(run_tests)
