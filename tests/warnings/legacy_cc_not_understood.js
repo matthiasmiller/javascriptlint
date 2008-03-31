@@ -5,5 +5,5 @@ function legacy_cc_not_understood() {
 
     /* illegal - unrecognized */
     /*@bogon@*/ /*warning:legacy_cc_not_understood*/
-   return;
+    return;
 }
