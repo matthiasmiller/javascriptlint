@@ -108,6 +108,11 @@ if __name__ == '__main__':
         help="dump this script")
     add("--unittest", dest="unittest", action="store_true", default=False,
         help="run the python unittests")
+    add("--quiet", dest="verbosity", action="store_const", const=0,
+        help="minimal output")
+    add("--verbose", dest="verbosity", action="store_const", const=2,
+        help="verbose output")
+    parser.set_defaults(verbosity=1)
     options, args = parser.parse_args()
 
     if len(sys.argv) == 1:
@@ -123,7 +128,8 @@ if __name__ == '__main__':
         profile_func = profile_enabled
 
     if options.unittest:
-        unittest.main(pyjsl.jsparse, argv=[sys.argv[0]])
+        runner = unittest.TextTestRunner(verbosity=options.verbosity)
+        runner.run(unittest.findTestCases(pyjsl.jsparse))
 
     if options.test:
         profile_func(run_tests)
