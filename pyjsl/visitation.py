@@ -1,3 +1,4 @@
+# vim: ts=4 sw=4 expandtab
 """ This is an abstract module for visiting specific nodes. This is useed to
 traverse the tree to generate warnings.
 """

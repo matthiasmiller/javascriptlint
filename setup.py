@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# vim: ts=4 sw=4 expandtab
 from distutils.core import setup, Extension
 import os
 

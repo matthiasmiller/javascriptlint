@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# vim: ts=4 sw=4 expandtab
 import codecs
 import glob
 import os
