@@ -1,3 +1,4 @@
+# vim: ts=4 sw=4 expandtab
 """ This module contains all the warnings. To add a new warning, define a
 class. Its name should be in lowercase and words should be separated by
 underscores. Its docstring should be the warning message.
