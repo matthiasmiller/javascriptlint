@@ -14,7 +14,13 @@ function misplaced_regex() {
     /* legal usage: regex as parameter (besides first) */
     misplaced_regex(re, /\/\./);
 
+    /* legal usage: regex in property */
+    var b = /\/\./.test(new String());
+
     /* illegal usage: anything else */
     i += /\/\./; /*warning:misplaced_regex*/
     i = -/.*/; /*warning:misplaced_regex*/
+
+    /* legal usage: return */
+    return /\/\./;
 }
