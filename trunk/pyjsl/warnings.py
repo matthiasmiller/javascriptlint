@@ -434,6 +434,13 @@ class trailing_comma_in_array:
         if node.end_comma:
             return node
 
+class useless_quotes:
+    'the quotation marks are unnecessary'
+    @lookat(tok.STRING)
+    def _lint(self, node):
+        if node.node_index == 0 and node.parent.kind == tok.COLON:
+            return node
+
 class mismatch_ctrl_comments:
     'mismatched control comment; "ignore" and "end" control comments must have a one-to-one correspondence'
     pass
