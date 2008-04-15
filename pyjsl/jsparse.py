@@ -220,6 +220,9 @@ def parse(script, error_callback):
     comments = _parse_comments(script, root_node, positions, comment_ignore_ranges)
     return root_node, comments
 
+def is_compilable_unit(script):
+    return pyspidermonkey.is_compilable_unit(script)
+
 def _dump_node(node, depth=0):
     print '.    '*depth,
     if node is None:
@@ -325,9 +328,8 @@ class TestCompilableUnit(unittest.TestCase):
             ('re = /.*', False),
             ('{ // missing curly', False)
         )
-        for text, is_compilable_unit in tests:
-            self.assertEquals(pyspidermonkey.is_compilable_unit(text),
-                                is_compilable_unit)
+        for text, result in tests:
+            self.assertEquals(is_compilable_unit(text), result)
 
 if __name__ == '__main__':
     unittest.main()
