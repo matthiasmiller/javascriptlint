@@ -3,6 +3,9 @@ function useless_quotes() {
         'key': 1 /*warning:useless_quotes*/
     };
     o = {
+        'key with space': false
+    };
+    o = {
         key: '1'
     };
 }
