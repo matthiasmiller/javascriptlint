@@ -245,16 +245,16 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         if not node.atom in imports:
             report(node, 'undeclared_identifier')
 
-def _lint_node(node, visitors, report, scope):
+def _warn_or_declare(scope, name, node, report):
+    other = scope.get_identifier(name)
+    if other and other.kind == tok.FUNCTION and name in other.fn_args:
+        report(node, 'var_hides_arg')
+    elif other:
+        report(node, 'redeclared_var')
+    else:
+        scope.add_declaration(name, node)
 
-    def warn_or_declare(name, node):
-        other = scope.get_identifier(name)
-        if other and other.kind == tok.FUNCTION and name in other.fn_args:
-            report(node, 'var_hides_arg')
-        elif other:
-            report(node, 'redeclared_var')
-        else:
-            scope.add_declaration(name, node)
+def _lint_node(node, visitors, report, scope):
 
     # Let the visitors warn.
     for kind in (node.kind, (node.kind, node.opcode)):
@@ -275,7 +275,7 @@ def _lint_node(node, visitors, report, scope):
     # Push function identifiers
     if node.kind == tok.FUNCTION:
         if node.fn_name:
-            warn_or_declare(node.fn_name, node)
+            _warn_or_declare(scope, node.fn_name, node, report)
         scope = scope.add_scope(node)
         for var_name in node.fn_args:
             scope.add_declaration(var_name, node)
@@ -285,7 +285,7 @@ def _lint_node(node, visitors, report, scope):
         scope = scope.add_scope(node)
 
     if node.parent and node.parent.kind == tok.VAR:
-        warn_or_declare(node.atom, node)
+        _warn_or_declare(scope, node.atom, node, report)
 
     for child in node.kids:
         if child:
