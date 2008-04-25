@@ -217,14 +217,22 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
     for pos, msg in parse_errors:
         _report(pos, msg, False)
 
-    visitors = visitation.make_visitors(warnings.klasses)['push']
+    # Find all visitors and convert them into "onpush" callbacks that call "report"
+    visitors = {}
+    visitation.make_visitors(visitors, warnings.klasses)
+    for event in visitors:
+        for kind, callbacks in visitors[event].items():
+            visitors[event][kind] = [_getreporter(callback, report) for callback in callbacks]
 
     assert not script_cache
     imports = script_cache['imports'] = set()
     scope = script_cache['scope'] = Scope(root)
 
+    # Push the scope/variable checks.
+    visitation.make_visitors(visitors, [_get_scope_checks(scope, report)])
+
     # kickoff!
-    _lint_node(root, visitors, report, scope)
+    _lint_node(root, visitors)
 
     # Process imports by copying global declarations into the universal scope.
     imports |= set(conf['declarations'])
@@ -245,6 +253,15 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         if not node.atom in imports:
             report(node, 'undeclared_identifier')
 
+def _getreporter(visitor, report):
+    def onpush(node):
+        try:
+            ret = visitor(node)
+            assert ret is None, 'visitor should raise an exception, not return a value'
+        except warnings.LintWarning, warning:
+            report(warning.node, visitor.im_class.__name__)
+    return onpush
+
 def _warn_or_declare(scope, name, node, report):
     other = scope.get_identifier(name)
     if other and other.kind == tok.FUNCTION and name in other.fn_args:
@@ -254,42 +271,58 @@ def _warn_or_declare(scope, name, node, report):
     else:
         scope.add_declaration(name, node)
 
-def _lint_node(node, visitors, report, scope):
+def _get_scope_checks(scope, report):
+    scopes = [scope]
 
-    # Let the visitors warn.
+    class scope_checks:
+        ' '
+        @visitation.visit('push', tok.NAME)
+        def _name(self, node):
+            if node.node_index == 0 and node.parent.kind == tok.COLON and node.parent.parent.kind == tok.RC:
+                pass # left side of object literal
+            elif node.parent.kind == tok.CATCH:
+                scopes[-1].add_declaration(node.atom, node)
+            else:
+                scopes[-1].add_reference(node.atom, node)
+
+        @visitation.visit('push', tok.FUNCTION)
+        def _push_func(self, node):
+            if node.fn_name:
+                _warn_or_declare(scopes[-1], node.fn_name, node, report)
+            self._push_scope(node)
+            for var_name in node.fn_args:
+                scopes[-1].add_declaration(var_name, node)
+
+        @visitation.visit('push', tok.LEXICALSCOPE, tok.WITH)
+        def _push_scope(self, node):
+            scopes.append(scopes[-1].add_scope(node))
+
+        @visitation.visit('pop', tok.FUNCTION, tok.LEXICALSCOPE, tok.WITH)
+        def _pop_scope(self, node):
+            scopes.pop()
+
+        @visitation.visit('push', tok.VAR)
+        def _push_var(self, node):
+            for kid in node.kids:
+                _warn_or_declare(scope, kid.atom, node, report)
+
+    return scope_checks
+
+
+def _lint_node(node, visitors):
+
     for kind in (node.kind, (node.kind, node.opcode)):
-        if kind in visitors:
-            for visitor in visitors[kind]:
-                try:
-                    ret = visitor(node)
-                    assert ret is None, 'visitor should raise an exception, not return a value'
-                except warnings.LintWarning, warning:
-                    report(warning.node, visitor.im_class.__name__)
-
-    if node.kind == tok.NAME:
-        if node.node_index == 0 and node.parent.kind == tok.COLON and node.parent.parent.kind == tok.RC:
-            pass # left side of object literal
-        elif node.parent.kind == tok.CATCH:
-            scope.add_declaration(node.atom, node)
-        else:
-            scope.add_reference(node.atom, node)
-
-    # Push function identifiers
-    if node.kind == tok.FUNCTION:
-        if node.fn_name:
-            _warn_or_declare(scope, node.fn_name, node, report)
-        scope = scope.add_scope(node)
-        for var_name in node.fn_args:
-            scope.add_declaration(var_name, node)
-    elif node.kind == tok.LEXICALSCOPE:
-        scope = scope.add_scope(node)
-    elif node.kind == tok.WITH:
-        scope = scope.add_scope(node)
-
-    if node.parent and node.parent.kind == tok.VAR:
-        _warn_or_declare(scope, node.atom, node, report)
+        if kind in visitors['push']:
+            for visitor in visitors['push'][kind]:
+                visitor(node)
 
     for child in node.kids:
         if child:
-            _lint_node(child, visitors, report, scope)
+            _lint_node(child, visitors)
+
+    for kind in (node.kind, (node.kind, node.opcode)):
+        if kind in visitors['pop']:
+            for visitor in visitors['pop'][kind]:
+                visitor(node)
+
 

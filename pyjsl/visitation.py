@@ -10,13 +10,21 @@ def visit(event, *args):
     def _decorate(fn):
         fn._visit_event = event
         fn._visit_nodes = args
+        print dir(fn), fn.func_name
+        raise ValueError
         return fn
     return _decorate
 
-def make_visitors(klasses):
+def make_visitors(visitors, klasses):
     """ Searches klasses for all member functions decorated with @visit and
-    returns a dictionary that maps from node type to visitor function. """
-    visitors = {}
+    fills a dictionary that looks like:
+        visitors = {
+            'event_name': {
+                'node_type' : [func1, func2]
+            }
+        }
+    """
+    assert isinstance(visitors, dict)
 
     # Intantiate an instance of each class
     for klass in klasses:
@@ -32,13 +40,15 @@ def make_visitors(klasses):
             for node_kind in getattr(func, '_visit_nodes', ()):
                 # Group visitors by event (e.g. push vs pop)
                 if not event_visitors:
-                    if not func._visit_event in visitors:
-                        visitors[func._visit_event] = {}
-                    event_visitors = visitors[func._visit_event]
+                    try:
+                        event_visitors = visitors[func._visit_event]
+                    except KeyError:
+                        event_visitors = visitors[func._visit_event] = {}
 
                 # Map from node_kind to the function
-                if not node_kind in visitors:
-                    event_visitors[node_kind] = []
-                event_visitors[node_kind].append(func)
+                try:
+                    event_visitors[node_kind].append(func)
+                except KeyError:
+                    event_visitors[node_kind] = [func]
     return visitors
 
