@@ -10,8 +10,6 @@ def visit(event, *args):
     def _decorate(fn):
         fn._visit_event = event
         fn._visit_nodes = args
-        print dir(fn), fn.func_name
-        raise ValueError
         return fn
     return _decorate
 
