@@ -217,7 +217,7 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
     for pos, msg in parse_errors:
         _report(pos, msg, False)
 
-    visitors = visitation.make_visitors(warnings.klasses)
+    visitors = visitation.make_visitors(warnings.klasses)['push']
 
     assert not script_cache
     imports = script_cache['imports'] = set()

@@ -3,11 +3,12 @@
 traverse the tree to generate warnings.
 """
 
-def visit(*args):
+def visit(event, *args):
     """ This decorator is used to indicate which nodes the function should
     examine. The function should accept (self, node) and return the relevant
     node or None. """
     def _decorate(fn):
+        fn._visit_event = event
         fn._visit_nodes = args
         return fn
     return _decorate
@@ -27,10 +28,17 @@ def make_visitors(klasses):
         # Look for functions with the "_visit_nodes" property.
         visitor = klass()
         for func in [getattr(visitor, name) for name in dir(visitor)]:
+            event_visitors = None
             for node_kind in getattr(func, '_visit_nodes', ()):
+                # Group visitors by event (e.g. push vs pop)
+                if not event_visitors:
+                    if not func._visit_event in visitors:
+                        visitors[func._visit_event] = {}
+                    event_visitors = visitors[func._visit_event]
+
                 # Map from node_kind to the function
                 if not node_kind in visitors:
-                    visitors[node_kind] = []
-                visitors[node_kind].append(func)
+                    event_visitors[node_kind] = []
+                event_visitors[node_kind].append(func)
     return visitors
 
