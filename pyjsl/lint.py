@@ -260,9 +260,11 @@ def _lint_node(node, visitors, report, scope):
     for kind in (node.kind, (node.kind, node.opcode)):
         if kind in visitors:
             for visitor in visitors[kind]:
-                warning_node = visitor(node)
-                if warning_node:
-                    report(warning_node, visitor.im_class.__name__)
+                try:
+                    ret = visitor(node)
+                    assert ret is None, 'visitor should raise an exception, not return a value'
+                except warnings.LintWarning, warning:
+                    report(warning.node, visitor.im_class.__name__)
 
     if node.kind == tok.NAME:
         if node.node_index == 0 and node.parent.kind == tok.COLON and node.parent.parent.kind == tok.RC:
