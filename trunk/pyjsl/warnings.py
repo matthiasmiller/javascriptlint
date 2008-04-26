@@ -68,12 +68,14 @@ warnings = {
     'dup_option_explicit': 'duplicate "option explicit" control comment',
 }
 
+_visitors = []
 def lookfor(*args):
     def decorate(fn):
-        fn._lint_nodes = args
         fn.warning = fn.func_name.rstrip('_')
         assert fn.warning in warnings, 'Missing warning description: %s' % fn.warning
-        return fn
+
+        for arg in args:
+            _visitors.append((arg, fn))
     return decorate
 
 class LintWarning(Exception):
@@ -478,17 +480,11 @@ def dup_option_explicit(node):
     pass
 
 def make_visitors():
-    functions = [
-        obj for obj in sys.modules[__name__].__dict__.values()
-        if type(obj) == types.FunctionType and hasattr(obj, '_lint_nodes')
-    ]
-
     visitors = {}
-    for func in functions:
-        for node_kind in func._lint_nodes:
-            try:
-                visitors[node_kind].append(func)
-            except KeyError:
-                visitors[node_kind] = [func]
+    for kind, func in _visitors:
+        try:
+            visitors[kind].append(func)
+        except KeyError:
+            visitors[kind] = [func]
     return visitors
 
