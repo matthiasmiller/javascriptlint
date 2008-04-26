@@ -68,8 +68,8 @@ class Conf:
             'equal_as_assign': BooleanSetting(True),
             'anon_no_return_value': BooleanSetting(True)
         }
-        for klass in warnings.klasses:
-            self._settings[klass.__name__] = BooleanSetting(True)
+        for name in warnings.warnings:
+            self._settings[name] = BooleanSetting(True)
         self.loadline('-block_without_braces')
 
     def loadfile(self, path):

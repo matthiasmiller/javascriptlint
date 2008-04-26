@@ -218,8 +218,9 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         _report(pos, msg, False)
 
     # Find all visitors and convert them into "onpush" callbacks that call "report"
-    visitors = {}
-    visitation.make_visitors(visitors, warnings.klasses)
+    visitors = {
+        'push': warnings.make_visitors()
+    }
     for event in visitors:
         for kind, callbacks in visitors[event].items():
             visitors[event][kind] = [_getreporter(callback, report) for callback in callbacks]
@@ -259,7 +260,7 @@ def _getreporter(visitor, report):
             ret = visitor(node)
             assert ret is None, 'visitor should raise an exception, not return a value'
         except warnings.LintWarning, warning:
-            report(warning.node, visitor.im_class.__name__)
+            report(warning.node, visitor.warning)
     return onpush
 
 def _warn_or_declare(scope, name, node, report):
