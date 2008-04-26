@@ -127,7 +127,7 @@ def _get_exit_points(node):
 class comparison_type_conv:
     'comparisons against null, 0, true, false, or an empty string allowing implicit type conversion (use === or !==)'
     @onpush((tok.EQOP, op.EQ))
-    def _lint(self, node):
+    def comparison_type_conv(self, node):
         for kid in node.kids:
             if kid.kind == tok.PRIMARY and kid.opcode in (op.NULL, op.TRUE, op.FALSE):
                 continue
@@ -140,7 +140,7 @@ class comparison_type_conv:
 class default_not_at_end:
     'the default case is not at the end of the switch statement'
     @onpush(tok.DEFAULT)
-    def _lint(self, node):
+    def default_not_at_end(self, node):
         siblings = node.parent.kids
         if node.node_index != len(siblings)-1:
             raise LintWarning, siblings[node.node_index+1]
@@ -148,7 +148,7 @@ class default_not_at_end:
 class duplicate_case_in_switch:
     'duplicate case in switch statement'
     @onpush(tok.CASE)
-    def _lint(self, node):
+    def duplicate_case_in_switch(self, node):
         # Only look at previous siblings
         siblings = node.parent.kids
         siblings = siblings[:node.node_index]
@@ -163,7 +163,7 @@ class duplicate_case_in_switch:
 class missing_default_case:
     'missing default case in switch statement'
     @onpush(tok.SWITCH)
-    def _lint(self, node):
+    def missing_default_case(self, node):
         value, cases = node.kids
         for case in cases.kids:
             if case.kind == tok.DEFAULT:
@@ -173,13 +173,13 @@ class missing_default_case:
 class with_statement:
     'with statement hides undeclared variables; use temporary variable instead'
     @onpush(tok.WITH)
-    def _lint(self, node):
+    def with_statement(self, node):
         raise LintWarning, node
 
 class useless_comparison:
     'useless comparison; comparing identical expressions'
     @onpush(tok.EQOP,tok.RELOP)
-    def _lint(self, node):
+    def useless_comparison(self, node):
         lvalue, rvalue = node.kids
         if lvalue.is_equivalent(rvalue):
             raise LintWarning, node
@@ -187,20 +187,20 @@ class useless_comparison:
 class use_of_label:
     'use of label'
     @onpush((tok.COLON, op.NAME))
-    def _lint(self, node):
+    def use_of_label(self, node):
         raise LintWarning, node
 
 class meaningless_block:
     'meaningless block; curly braces have no impact'
     @onpush(tok.LC)
-    def _lint(self, node):
+    def meaningless_block(self, node):
         if node.parent and node.parent.kind == tok.LC:
             raise LintWarning, node
 
 class misplaced_regex:
     'regular expressions should be preceded by a left parenthesis, assignment, colon, or comma'
     @onpush((tok.OBJECT, op.REGEXP))
-    def _lint(self, node):
+    def misplaced_regex(self, node):
         if node.parent.kind == tok.NAME and node.parent.opcode == op.SETNAME:
             return # Allow in var statements
         if node.parent.kind == tok.ASSIGN and node.parent.opcode == op.NOP:
@@ -218,14 +218,14 @@ class misplaced_regex:
 class assign_to_function_call:
     'assignment to a function call'
     @onpush(tok.ASSIGN)
-    def _lint(self, node):
+    def assign_to_function_call(self, node):
         if node.kids[0].kind == tok.LP:
             raise LintWarning, node
 
 class ambiguous_else_stmt:
     'the else statement could be matched with one of multiple if statements (use curly braces to indicate intent'
     @onpush(tok.IF)
-    def _lint(self, node):
+    def ambiguous_else_stmt(self, node):
         # Only examine this node if it has an else statement.
         condition, if_, else_ = node.kids
         if not else_:
@@ -244,7 +244,7 @@ class ambiguous_else_stmt:
 class block_without_braces:
     'block statement without curly braces'
     @onpush(tok.IF, tok.WHILE, tok.DO, tok.FOR, tok.WITH)
-    def _lint(self, node):
+    def block_without_braces(self, node):
         if node.kids[1].kind != tok.LC:
             raise LintWarning, node.kids[1]
 
@@ -252,7 +252,7 @@ class ambiguous_nested_stmt:
     'block statements containing block statements should use curly braces to resolve ambiguity'
     _block_nodes = (tok.IF, tok.WHILE, tok.DO, tok.FOR, tok.WITH)
     @onpush(*_block_nodes)
-    def _lint(self, node):
+    def ambiguous_nested_stmt(self, node):
         # Ignore "else if"
         if node.kind == tok.IF and node.node_index == 2 and node.parent.kind == tok.IF:
             return
@@ -266,7 +266,7 @@ class ambiguous_nested_stmt:
 class inc_dec_within_stmt:
     'increment (++) and decrement (--) operators used as part of greater statement'
     @onpush(tok.INC, tok.DEC)
-    def _lint(self, node):
+    def inc_dec_within_stmt(self, node):
         if node.parent.kind == tok.SEMI:
             return
 
@@ -291,7 +291,7 @@ class inc_dec_within_stmt:
 class comma_separated_stmts:
     'multiple statements separated by commas (use semicolons?)'
     @onpush(tok.COMMA)
-    def _lint(self, node):
+    def comma_separated_stmts(self, node):
         # Allow within the first and third part of "for(;;)"
         if _get_branch_in_for(node) in (0, 2):
             return
@@ -303,11 +303,11 @@ class comma_separated_stmts:
 class empty_statement:
     'empty statement or extra semicolon'
     @onpush(tok.SEMI)
-    def _semi(self, node):
+    def empty_statement(self, node):
         if not node.kids[0]:
             raise LintWarning, node
     @onpush(tok.LC)
-    def _lc(self, node):
+    def empty_statement_(self, node):
         if node.kids:
             return
         # Ignore the outermost block.
@@ -321,7 +321,7 @@ class empty_statement:
 class missing_break:
     'missing break statement'
     @onpush(tok.CASE, tok.DEFAULT)
-    def _lint(self, node):
+    def missing_break(self, node):
         # The last item is handled separately
         if node.node_index == len(node.parent.kids)-1:
             return
@@ -337,7 +337,7 @@ class missing_break:
 class missing_break_for_last_case:
     'missing break statement for last case in switch'
     @onpush(tok.CASE, tok.DEFAULT)
-    def _lint(self, node):
+    def missing_break_for_last_case(self, node):
         if node.node_index < len(node.parent.kids)-1:
             return
         case_contents = node.kids[1]
@@ -348,18 +348,18 @@ class missing_break_for_last_case:
 class multiple_plus_minus:
     'unknown order of operations for successive plus (e.g. x+++y) or minus (e.g. x---y) signs'
     @onpush(tok.INC)
-    def _inc(self, node):
+    def multiple_plus_minus(self, node):
         if node.node_index == 0 and node.parent.kind == tok.PLUS:
             raise LintWarning, node
     @onpush(tok.DEC)
-    def _dec(self, node):
+    def multiple_plus_minus_(self, node):
         if node.node_index == 0 and node.parent.kind == tok.MINUS:
             raise LintWarning, node
 
 class useless_assign:
     'useless assignment'
     @onpush((tok.NAME, op.SETNAME))
-    def _lint(self, node):
+    def useless_assign(self, node):
         if node.parent.kind == tok.ASSIGN:
             assert node.node_index == 0
             value = node.parent.kids[1]
@@ -371,7 +371,7 @@ class useless_assign:
 class unreachable_code:
     'unreachable code'
     @onpush(tok.BREAK, tok.CONTINUE, tok.RETURN, tok.THROW)
-    def _lint(self, node):
+    def unreachable_code(self, node):
         if node.parent.kind == tok.LC and \
             node.node_index != len(node.parent.kids)-1:
             raise LintWarning, node.parent.kids[node.node_index+1]
@@ -379,44 +379,44 @@ class unreachable_code:
 class meaningless_block:
     'meaningless block; curly braces have no impact'
     #TODO: @onpush(tok.IF)
-    def _lint(self, node):
+    def meaningless_block(self, node):
         condition, if_, else_ = node.kids
         if condition.kind == tok.PRIMARY and condition.opcode in (op.TRUE, op.FALSE, op.NULL):
             raise LintWarning, condition
     #TODO: @onpush(tok.WHILE)
-    def _lint(self, node):
+    def meaningless_blocK_(self, node):
         condition = node.kids[0]
         if condition.kind == tok.PRIMARY and condition.opcode in (op.FALSE, op.NULL):
             raise LintWarning, condition
     @onpush(tok.LC)
-    def _lint(self, node):
+    def meaningless_block__(self, node):
         if node.parent and node.parent.kind == tok.LC:
             raise LintWarning, node
 
 class useless_void:
     'use of the void type may be unnecessary (void is always undefined)'
     @onpush((tok.UNARYOP, op.VOID))
-    def _lint(self, node):
+    def useless_void(self, node):
         raise LintWarning, node
 
 class parseint_missing_radix:
     'parseInt missing radix parameter'
     @onpush((tok.LP, op.CALL))
-    def _lint(self, node):
+    def parseint_missing_radix(self, node):
         if node.kids[0].kind == tok.NAME and node.kids[0].atom == 'parseInt' and len(node.kids) <= 2:
             raise LintWarning, node
 
 class leading_decimal_point:
     'leading decimal point may indicate a number or an object member'
     @onpush(tok.NUMBER)
-    def _lint(self, node):
+    def leading_decimal_point(self, node):
         if node.atom.startswith('.'):
             raise LintWarning, node
 
 class trailing_decimal_point:
     'trailing decimal point may indicate a number or an object member'
     @onpush(tok.NUMBER)
-    def _lint(self, node):
+    def trailing_decimal_point(self, node):
         if node.parent.kind == tok.DOT:
             raise LintWarning, node
         if node.atom.endswith('.'):
@@ -426,21 +426,21 @@ class octal_number:
     'leading zeros make an octal number'
     _regexp = re.compile('^0[0-9]')
     @onpush(tok.NUMBER)
-    def _line(self, node):
+    def octal_number(self, node):
         if self._regexp.match(node.atom):
             raise LintWarning, node
 
 class trailing_comma_in_array:
     'extra comma is not recommended in array initializers'
     @onpush(tok.RB)
-    def _line(self, node):
+    def trailing_comma_in_array(self, node):
         if node.end_comma:
             raise LintWarning, node
 
 class useless_quotes:
     'the quotation marks are unnecessary'
     @onpush(tok.STRING)
-    def _lint(self, node):
+    def useless_quotes(self, node):
         if node.node_index == 0 and node.parent.kind == tok.COLON:
             raise LintWarning, node
 
