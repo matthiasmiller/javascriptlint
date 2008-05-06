@@ -15,6 +15,7 @@
 #include <jsscope.h>
 #include <jsstr.h>
 
+#include "nodepos.h"
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof(a[0]))
 
@@ -107,6 +108,8 @@ initpyspidermonkey(void) {
         if (PyObject_SetAttrString(op, opcode, PyLong_FromLong(OPCODE_TO_NUM(i))) == -1)
             return;
     }
+
+    RegisterNodePosType(module);
 }
 
 PyMODINIT_FUNC
