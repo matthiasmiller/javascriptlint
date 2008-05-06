@@ -13,23 +13,7 @@ _tok_names = dict(zip(
     ['tok.%s' % prop for prop in dir(tok)]
 ))
 
-class NodePos:
-    " Represents zero-based line and column number. "
-    def __init__(self, line, col):
-        self.line = line
-        self.col = col
-    def __cmp__(self, other):
-        if self.line < other.line:
-            return -1
-        if self.line > other.line:
-            return 1
-        if self.col < other.col:
-            return -1
-        if self.col > other.col:
-            return 1
-        return 0
-    def __str__(self):
-        return '(line %i, col %i)' % (self.line+1, self.col+1)
+NodePos = pyspidermonkey.NodePos
 
 class NodePositions:
     " Given a string, allows [x] lookups for NodePos line and column numbers."

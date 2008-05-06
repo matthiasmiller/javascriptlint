@@ -22,7 +22,10 @@ if __name__ == '__main__':
             include_dirs = ['spidermonkey/src', 'build/spidermonkey'],
             library_dirs = ['build/spidermonkey'],
             libraries = [library],
-            sources = ['pyspidermonkey/pyspidermonkey.c']
+            sources = [
+                'pyspidermonkey/pyspidermonkey.c',
+                'pyspidermonkey/nodepos.c'
+            ]
         )
     args = {}
     args.update(
