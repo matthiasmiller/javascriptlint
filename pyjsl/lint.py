@@ -75,7 +75,8 @@ def _parse_control_comment(comment):
 
 class Scope:
     def __init__(self, node):
-        self._is_with_scope = node.kind == tok.WITH
+        """ node may be None """
+        self._is_with_scope = node and node.kind == tok.WITH
         self._parent = None
         self._kids = []
         self._identifiers = {}
@@ -116,6 +117,9 @@ class Scope:
                 identifiers.append(node)
         return identifiers
     def find_scope(self, node):
+        if not self._node:
+            return None
+
         for kid in self._kids:
             scope = kid.find_scope(node)
             if scope:
@@ -233,7 +237,8 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
     visitation.make_visitors(visitors, [_get_scope_checks(scope, report)])
 
     # kickoff!
-    _lint_node(root, visitors)
+    if root:
+        _lint_node(root, visitors)
 
     # Process imports by copying global declarations into the universal scope.
     imports |= set(conf['declarations'])
