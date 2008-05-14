@@ -199,7 +199,8 @@ def parse(script, error_callback):
         nodes.pop()
 
     root_node = pyspidermonkey.parse(script, _Node, _wrapped_callback)
-    process(root_node)
+    if root_node:
+        process(root_node)
 
     comments = _parse_comments(script, root_node, positions, comment_ignore_ranges)
     return root_node, comments

@@ -423,8 +423,10 @@ module_parse(PyObject *self, PyObject *args) {
 
     m.jsnode = js_ParseTokenStream(m.context, m.global, m.token_stream);
     if (!m.jsnode) {
-        error = "parse error in file";
-        goto cleanup;
+        if (!JS_ReportPendingException(m.context)) {
+            error = "parse error in file";
+            goto cleanup;
+        }
     }
 
     m.pynode = jsnode_to_pynode(m.context, m.jsnode);
