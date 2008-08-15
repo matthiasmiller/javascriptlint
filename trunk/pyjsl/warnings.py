@@ -31,7 +31,6 @@ warnings = {
     'with_statement': 'with statement hides undeclared variables; use temporary variable instead',
     'useless_comparison': 'useless comparison; comparing identical expressions',
     'use_of_label': 'use of label',
-    'meaningless_block': 'meaningless block; curly braces have no impact',
     'misplaced_regex': 'regular expressions should be preceded by a left parenthesis, assignment, colon, or comma',
     'assign_to_function_call': 'assignment to a function call',
     'ambiguous_else_stmt': 'the else statement could be matched with one of multiple if statements (use curly braces to indicate intent',
@@ -222,11 +221,6 @@ def useless_comparison(node):
 @lookfor((tok.COLON, op.NAME))
 def use_of_label(node):
     raise LintWarning, node
-
-@lookfor(tok.LC)
-def meaningless_block(node):
-    if node.parent and node.parent.kind == tok.LC:
-        raise LintWarning, node
 
 @lookfor((tok.OBJECT, op.REGEXP))
 def misplaced_regex(node):
