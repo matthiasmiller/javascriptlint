@@ -176,12 +176,11 @@ def _get_exit_points(node):
 def comparison_type_conv(node):
     for kid in node.kids:
         if kid.kind == tok.PRIMARY and kid.opcode in (op.NULL, op.TRUE, op.FALSE):
-            continue
+            raise LintWarning, kid
         if kid.kind == tok.NUMBER and not kid.dval:
-            continue
+            raise LintWarning, kid
         if kid.kind == tok.STRING and not kid.atom:
-            continue
-        raise LintWarning, kid
+            raise LintWarning, kid
 
 @lookfor(tok.DEFAULT)
 def default_not_at_end(node):
