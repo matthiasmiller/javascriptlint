@@ -450,16 +450,9 @@ def nested_comment(node):
 def legacy_cc_not_understood(node):
     pass
 
-@lookfor(tok.NAME)
+@lookfor()
 def var_hides_arg(node):
-    if node.parent.kind != tok.VAR:
-        return
-
-    parent = node.parent
-    while parent:
-        if parent.kind == tok.FUNCTION and node.atom in parent.fn_args:
-            raise LintWarning, node
-        parent = parent.parent
+    pass
 
 @lookfor()
 def duplicate_formal(node):
