@@ -310,7 +310,7 @@ def _get_scope_checks(scope, report):
         @visitation.visit('push', tok.VAR)
         def _push_var(self, node):
             for kid in node.kids:
-                _warn_or_declare(scope, kid.atom, node, report)
+                _warn_or_declare(scopes[-1], kid.atom, node, report)
 
     return scope_checks
 
