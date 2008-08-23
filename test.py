@@ -24,7 +24,7 @@ def _get_expected_warnings(script):
     for i in range(0, len(lines)):
         for warning in regexp.findall(lines[i]):
             # TODO: implement these
-            unimpl_warnings = ('ambiguous_newline', 'dup_option_explicit', 'invalid_pass',
+            unimpl_warnings = ('ambiguous_newline', 'dup_option_explicit',
                 'missing_semicolon'
             )
             if not warning in unimpl_warnings:

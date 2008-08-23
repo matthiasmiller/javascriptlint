@@ -156,9 +156,16 @@ def lint_files(paths, lint_error, conf=conf.Conf()):
 def _lint_script(script, script_cache, lint_error, conf, import_callback):
     def parse_error(row, col, msg):
         if not msg in ('redeclared_var', 'var_hides_arg'):
-                parse_errors.append((jsparse.NodePos(row, col), msg))
+            parse_errors.append((jsparse.NodePos(row, col), msg))
 
     def report(node, errname):
+        if errname == 'empty_statement' and node.kind == tok.LC:
+            for pass_ in passes:
+                if pass_.start_pos() > node.start_pos() and \
+                   pass_.end_pos() < node.end_pos():
+                    passes.remove(pass_)
+                    return
+
         if errname == 'missing_break':
             # Find the end of the previous case/default and the beginning of
             # the next case/default.
@@ -209,6 +216,7 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
     declares = []
     import_paths = []
     fallthrus = []
+    passes = []
     for comment in comments:
         cc = _parse_control_comment(comment)
         if cc:
@@ -236,6 +244,8 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
                     import_paths.append(parms)
             elif keyword == 'fallthru':
                 fallthrus.append(node)
+            elif keyword == 'pass':
+                passes.append(node)
         else:
             if comment.opcode == 'c_comment':
                 if '/*' in comment.atom or comment.atom.endswith('/'):
@@ -272,6 +282,8 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
 
     for fallthru in fallthrus:
         report(fallthru, 'invalid_fallthru')
+    for fallthru in passes:
+        report(fallthru, 'invalid_pass')
 
     # Process imports by copying global declarations into the universal scope.
     imports |= set(conf['declarations'])
