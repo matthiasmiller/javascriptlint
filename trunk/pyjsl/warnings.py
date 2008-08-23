@@ -65,6 +65,7 @@ warnings = {
     'missing_option_explicit': 'the "option explicit" control comment is missing',
     'partial_option_explicit': 'the "option explicit" control comment, if used, must be in the first script tag',
     'dup_option_explicit': 'duplicate "option explicit" control comment',
+    'invalid_fallthru': 'unexpected "fallthru" control comment'
 }
 
 _visitors = []
