@@ -1519,7 +1519,9 @@ Statements(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
     if (tt == TOK_ERROR)
         return NULL;
 
-    pn->pn_pos.end = CURRENT_TOKEN(ts).pos.end;
+    /* Set the LC's end position to the start of the RC. The stream is
+     * guaranteed to have a lookahead because of the peek above. */
+    pn->pn_pos.end = ts->tokens[(ts->cursor+ts->lookahead) & NTOKENS_MASK].pos.begin;
     return pn;
 }
 
