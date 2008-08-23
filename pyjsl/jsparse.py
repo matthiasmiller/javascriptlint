@@ -179,11 +179,12 @@ def parse(script, error_callback):
         msg = msg[6:].lower()
         error_callback(line, col, msg)
 
-    positions = NodePositions(script)
+    return pyspidermonkey.parse(script, _Node, _wrapped_callback)
 
-    roots = []
-    nodes = []
+def parsecomments(script, root_node):
+    positions = NodePositions(script)
     comment_ignore_ranges = NodeRanges()
+
     def process(node):
         if node.kind == tok.NUMBER:
             node.atom = positions.text(node.start_pos(), node.end_pos())
@@ -195,15 +196,9 @@ def parse(script, error_callback):
         for kid in node.kids:
             if kid:
                 process(kid)
-    def pop():
-        nodes.pop()
+    process(root_node)
 
-    root_node = pyspidermonkey.parse(script, _Node, _wrapped_callback)
-    if root_node:
-        process(root_node)
-
-    comments = _parse_comments(script, root_node, positions, comment_ignore_ranges)
-    return root_node, comments
+    return _parse_comments(script, root_node, positions, comment_ignore_ranges)
 
 def is_compilable_unit(script):
     return pyspidermonkey.is_compilable_unit(script)
@@ -220,12 +215,13 @@ def _dump_node(node, depth=0):
 def dump_tree(script):
     def error_callback(line, col, msg):
         print '(%i, %i): %s', (line, col, msg)
-    node, comments = parse(script, error_callback)
+    node = parse(script, error_callback)
     _dump_node(node)
 
 class TestComments(unittest.TestCase):
     def _test(self, script, expected_comments):
-        root, comments = parse(script, lambda line, col, msg: None)
+        root = parse(script, lambda line, col, msg: None)
+        comments = parsecomments(script, root)
         encountered_comments = [node.atom for node in comments]
         self.assertEquals(encountered_comments, list(expected_comments))
     def testSimpleComments(self):

@@ -176,7 +176,8 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         return lint_error(pos.line, pos.col, errname)
 
     parse_errors = []
-    root, comments = jsparse.parse(script, parse_error)
+    root = jsparse.parse(script, parse_error)
+    comments = jsparse.parsecomments(script, root)
     ignores = []
     start_ignore = None
     declares = []
