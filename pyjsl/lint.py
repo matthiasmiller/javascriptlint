@@ -159,6 +159,29 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
                 parse_errors.append((jsparse.NodePos(row, col), msg))
 
     def report(node, errname):
+        if errname == 'missing_break':
+            # Find the end of the previous case/default and the beginning of
+            # the next case/default.
+            assert node.kind in (tok.CASE, tok.DEFAULT)
+            prevnode = node.parent.kids[node.node_index-1]
+            expectedfallthru = prevnode.end_pos(), node.start_pos()
+        elif errname == 'missing_break_for_last_case':
+            # Find the end of the current case/default and the end of the
+            # switch.
+            assert node.parent.kind == tok.LC
+            expectedfallthru = node.end_pos(), node.parent.end_pos()
+        else:
+            expectedfallthru = None
+
+        if expectedfallthru:
+            start, end = expectedfallthru
+            for fallthru in fallthrus:
+                # Look for a fallthru between the end of the current case or
+                # default statement and the beginning of the next token.
+                if fallthru.start_pos() > start and fallthru.end_pos() < end:
+                    fallthrus.remove(fallthru)
+                    return
+
         _report(node.start_pos(), errname, True)
 
     def _report(pos, errname, require_key):
@@ -185,6 +208,7 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
     start_ignore = None
     declares = []
     import_paths = []
+    fallthrus = []
     for comment in comments:
         cc = _parse_control_comment(comment)
         if cc:
@@ -210,6 +234,8 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
                     report(node, 'jsl_cc_not_understood')
                 else:
                     import_paths.append(parms)
+            elif keyword == 'fallthru':
+                fallthrus.append(node)
         else:
             if comment.opcode == 'c_comment':
                 if '/*' in comment.atom or comment.atom.endswith('/'):
@@ -243,6 +269,9 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
     # kickoff!
     if root:
         _lint_node(root, visitors)
+
+    for fallthru in fallthrus:
+        report(fallthru, 'invalid_fallthru')
 
     # Process imports by copying global declarations into the universal scope.
     imports |= set(conf['declarations'])

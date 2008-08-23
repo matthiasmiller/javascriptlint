@@ -8,10 +8,10 @@ function missing_default_case() {
         return 1;
     }
 
-    /* ambivalence - allow fallthru but don't enforce it */
+    /* ambivalence - fallthru is meaningless */
     switch (i) {
       case 2:
-        /*jsl:fallthru*/
+        /*jsl:fallthru*/ /*warning:invalid_fallthru*/
       case 3:
         s += 1;
         break;
