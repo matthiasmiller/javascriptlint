@@ -124,7 +124,7 @@ class _Node:
 
         return True
 
-def _parse_comments(script, root, node_positions, ignore_ranges):
+def _parse_comments(script, node_positions, ignore_ranges):
     pos = 0
     single_line_re = r"//[^\r\n]*"
     multi_line_re = r"/\*(.*?)\*/"
@@ -198,7 +198,7 @@ def parsecomments(script, root_node):
                 process(kid)
     process(root_node)
 
-    return _parse_comments(script, root_node, positions, comment_ignore_ranges)
+    return _parse_comments(script, positions, comment_ignore_ranges)
 
 def is_compilable_unit(script):
     return pyspidermonkey.is_compilable_unit(script)
