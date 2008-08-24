@@ -18,6 +18,7 @@ import re
 import sys
 import types
 
+import util
 import visitation
 from pyspidermonkey import tok, op
 
@@ -420,7 +421,9 @@ def trailing_comma_in_array(node):
 @lookfor(tok.STRING)
 def useless_quotes(node):
     if node.node_index == 0 and node.parent.kind == tok.COLON:
-        raise LintWarning, node
+        # Only warn if the quotes could safely be removed.
+        if util.isidentifier(node.atom):
+            raise LintWarning, node
 
 @lookfor()
 def mismatch_ctrl_comments(node):
