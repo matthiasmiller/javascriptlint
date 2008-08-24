@@ -185,8 +185,8 @@ function ambiguous_newline() {
 
     /* legal */
     o = {
-        'one': 1,
-        'two': 2
+        one: 1,
+        two: 2
     };
 
     /* legal */

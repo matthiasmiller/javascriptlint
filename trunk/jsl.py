@@ -129,8 +129,12 @@ if __name__ == '__main__':
         profile_func = profile_enabled
 
     if options.unittest:
+        suite = unittest.TestSuite();
+        for module in [pyjsl.jsparse, pyjsl.util]:
+            suite.addTest(unittest.findTestCases(module))
+
         runner = unittest.TextTestRunner(verbosity=options.verbosity)
-        runner.run(unittest.findTestCases(pyjsl.jsparse))
+        runner.run(suite)
 
     if options.test:
         profile_func(run_tests)

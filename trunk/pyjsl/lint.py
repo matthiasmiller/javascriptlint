@@ -29,8 +29,6 @@ _globals = frozenset([
     'arguments', 'undefined'
 ])
 
-_identifier = re.compile('^[A-Za-z_$][A-Za-z0-9_$]*$')
-
 def _find_function(node):
     while node and node.kind != tok.FUNCTION:
         node = node.parent
@@ -222,7 +220,7 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         if cc:
             node, keyword, parms = cc
             if keyword == 'declare':
-                if not _identifier.match(parms):
+                if not util.isidentifier(parms):
                     report(node, 'jsl_cc_not_understood')
                 else:
                     declares.append((parms, node))
