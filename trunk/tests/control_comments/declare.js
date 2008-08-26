@@ -1,5 +1,4 @@
 /*jsl:option explicit*/
-/*conf:-unreferenced_identifier*/
 function declare() {
     window.alert('http://www.javascriptlint.com/');
     /*jsl:declare window*/ /*warning:redeclared_var*/

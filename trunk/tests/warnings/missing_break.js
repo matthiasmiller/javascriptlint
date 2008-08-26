@@ -1,5 +1,4 @@
 /*jsl:option explicit*/
-/*conf:-unreferenced_identifier*/
 function missing_break() {
     var i, o, s;
 

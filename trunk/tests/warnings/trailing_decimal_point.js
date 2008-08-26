@@ -1,5 +1,4 @@
 /*jsl:option explicit*/
-/*conf:-unreferenced_identifier*/
 function trailing_decimal_point() {
     var i;
 
