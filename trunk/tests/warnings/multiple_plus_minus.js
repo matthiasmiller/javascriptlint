@@ -1,4 +1,5 @@
 /*jsl:option explicit*/
+/*conf:-want_assign_or_call*/
 function multiple_plus_minus() {
     var i, j;
     i = 0;
