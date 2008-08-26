@@ -68,7 +68,8 @@ warnings = {
     'partial_option_explicit': 'the "option explicit" control comment, if used, must be in the first script tag',
     'dup_option_explicit': 'duplicate "option explicit" control comment',
     'invalid_fallthru': 'unexpected "fallthru" control comment',
-    'invalid_pass': 'unexpected "pass" control comment'
+    'invalid_pass': 'unexpected "pass" control comment',
+    'want_assign_or_call': 'expected an assignment or function call'
 }
 
 _visitors = []
@@ -425,6 +426,25 @@ def useless_quotes(node):
         # Only warn if the quotes could safely be removed.
         if util.isidentifier(node.atom):
             raise LintWarning, node
+
+@lookfor(tok.SEMI)
+def want_assign_or_call(node):
+    child, = node.kids
+    # Ignore empty statements.
+    if not child:
+        return
+    # NOTE: Don't handle comma-separated statements.
+    if child.kind in (tok.ASSIGN, tok.INC, tok.DEC, tok.DELETE, tok.COMMA):
+        return
+    # Ignore function calls.
+    if child.kind == tok.LP and child.opcode == op.CALL:
+        return
+    # Allow new function() { } as statements.
+    if child.kind == tok.NEW:
+        grandchild, = child.kids
+        if grandchild.kind == tok.FUNCTION:
+            return
+    raise LintWarning, child
 
 @lookfor()
 def mismatch_ctrl_comments(node):
