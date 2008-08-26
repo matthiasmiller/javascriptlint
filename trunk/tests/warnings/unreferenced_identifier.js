@@ -59,6 +59,19 @@ function unreferenced_identifier() {
     var assigned_but_ref;
     (assigned_but_ref = callback)();
 
+    /* Test increment and decrement. */
+    var unref_inc; /*warning:unreferenced_identifier*/
+    unref_inc++;
+    var unref_dec; /*warning:unreferenced_identifier*/
+    unref_dec--;
+
+    var tmp;
+    var ref_inc;
+    tmp = ref_inc++; /*warning:inc_dec_within_stmt*/
+    var ref_dec;
+    tmp = ref_dec--; /*warning:inc_dec_within_stmt*/
+    tmp = -tmp;
+
     /* Test nested scopes. */
     function get_callback(parm) {
         return function() {

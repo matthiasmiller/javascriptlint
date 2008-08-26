@@ -142,7 +142,7 @@ class Scope:
             resolved = self.resolve_identifier(name)
             if resolved:
                 # Make sure this isn't an assignment.
-                if node.parent.kind == tok.ASSIGN and \
+                if node.parent.kind in (tok.ASSIGN, tok.INC, tok.DEC) and \
                    node.node_index == 0 and \
                    node.parent.parent.kind == tok.SEMI:
                     continue
