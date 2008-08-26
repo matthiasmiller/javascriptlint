@@ -245,17 +245,26 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         return lint_error(pos.line, pos.col, errname)
 
     parse_errors = []
-    root = jsparse.parse(script, parse_error)
-    if root:
-        comments = jsparse.parsecomments(script, root)
-    else:
-        comments = []
     ignores = []
-    start_ignore = None
     declares = []
     import_paths = []
     fallthrus = []
     passes = []
+
+    root = jsparse.parse(script, parse_error)
+    if not root:
+        # Cache empty results for this script.
+        assert not script_cache
+        script_cache['imports'] = set()
+        script_cache['scope'] = Scope(None)
+
+        # Report errors and quit.
+        for pos, msg in parse_errors:
+            _report(pos, msg, False)
+        return
+
+    comments = jsparse.parsecomments(script, root)
+    start_ignore = None
     for comment in comments:
         cc = _parse_control_comment(comment)
         if cc:
@@ -316,8 +325,7 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
     visitation.make_visitors(visitors, [_get_scope_checks(scope, report)])
 
     # kickoff!
-    if root:
-        _lint_node(root, visitors)
+    _lint_node(root, visitors)
 
     for fallthru in fallthrus:
         report(fallthru, 'invalid_fallthru')
