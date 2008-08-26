@@ -1,4 +1,5 @@
 /*jsl:option explicit*/
+/*conf:-unreferenced_identifier*/
 function missing_default_case() {
     var i, s;
 

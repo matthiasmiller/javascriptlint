@@ -141,6 +141,11 @@ class Scope:
         for name, node in self._references:
             resolved = self.resolve_identifier(name)
             if resolved:
+                # Make sure this isn't an assignment.
+                if node.parent.kind == tok.ASSIGN and \
+                   node.node_index == 0 and \
+                   node.parent.parent.kind == tok.SEMI:
+                    continue
                 unreferenced.pop((resolved[0], name), None)
             else:
                 # with statements cannot have undeclared identifiers.
