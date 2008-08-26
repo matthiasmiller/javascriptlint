@@ -35,6 +35,7 @@ function unreferenced_identifier() {
     catch(err) {
         can = false; /* ...but maybe not! */
     }
+    can = !can;
 
     /* Test a with statement. */
     var withobj = {};
@@ -45,6 +46,15 @@ function unreferenced_identifier() {
         var innerval = '42';
         prop_b = innerval;
     }
+
+    /* Test assignments. */
+    var assigned_but_unref; /*warning:unreferenced_identifier*/
+    assigned_but_unref = 42;
+
+    function callback() {
+    }
+    var assigned_but_ref;
+    (assigned_but_ref = callback)();
 
     /* Test nested scopes. */
     function get_callback(parm) {

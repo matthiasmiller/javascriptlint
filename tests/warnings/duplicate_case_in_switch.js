@@ -1,4 +1,5 @@
 /*jsl:option explicit*/
+/*conf:-unreferenced_identifier*/
 function duplicate_case_in_switch() {
     var i, o, s;
 
