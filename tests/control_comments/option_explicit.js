@@ -1,4 +1,5 @@
 /*jsl:option explicit*/
+/*conf:-unreferenced_identifier*/
 var g;
 function option_explicit(parm) {
     /* legal - j is declared */

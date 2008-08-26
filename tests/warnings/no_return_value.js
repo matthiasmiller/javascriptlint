@@ -1,4 +1,5 @@
 /*jsl:option explicit*/
+/*conf:-unreferenced_identifier*/
 function no_return_value() {
     function error1(b) {
         if (b)

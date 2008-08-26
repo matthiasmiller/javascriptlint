@@ -1,4 +1,5 @@
 /*jsl:option explicit*/
+/*conf:-unreferenced_identifier*/
 function option_explicit() {
     var o = {};
 

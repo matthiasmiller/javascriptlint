@@ -1,4 +1,5 @@
 /*jsl:option explicit*/
+/*conf:-unreferenced_identifier*/
 function anon_no_return_value() {
     var error1 = function(b) {
         if (b)
