@@ -1,5 +1,4 @@
 /*jsl:option explicit*/
-/*conf:-unreferenced_identifier*/
 function inc_dec_within_stmt() {
     var i, s;
 

@@ -4,6 +4,12 @@ import re
 import pyjsl.conf
 import pyjsl.lint
 
+_DEFAULT_CONF = """
+# This warning triggers a lot of warnings in many of the tests, so only enable
+# it when specifically testing it.
+-unreferenced_identifier
+"""
+
 class TestError(Exception):
     pass
 
@@ -11,6 +17,7 @@ def _get_conf(script):
     regexp = re.compile(r"/\*conf:([^*]*)\*/")
     text = '\n'.join(regexp.findall(script))
     conf = pyjsl.conf.Conf()
+    conf.loadtext(_DEFAULT_CONF)
     conf.loadtext(text)
     return conf
 

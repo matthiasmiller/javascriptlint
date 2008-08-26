@@ -1,7 +1,7 @@
 /*jsl:option explicit*/
 function missing_semicolon() {
     /* missing semicolon after return */
-    function MissingSemicolonOnReturnStatement() { /*warning:unreferenced_identifier*/
+    function MissingSemicolonOnReturnStatement() {
         return 0
     } /*warning:missing_semicolon*/
 

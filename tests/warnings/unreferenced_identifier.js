@@ -1,3 +1,6 @@
+/* The tests disable this warning by default becaues of noise. Enable it. */
+/*conf:+unreferenced_identifier*/
+
 /* outer-level functions shouldn't warn */
 var unreferenced_global;
 function unreferenced_identifier() {
