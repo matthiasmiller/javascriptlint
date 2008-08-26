@@ -1,4 +1,5 @@
 /*jsl:option explicit*/
+/*conf:-unreferenced_identifier*/
 function ambiguous_newline() {
     /* the EOL test is based on JSLint's documentation */
     var a, b, i, o, s;

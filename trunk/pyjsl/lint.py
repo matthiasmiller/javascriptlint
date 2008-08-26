@@ -74,7 +74,6 @@ def _parse_control_comment(comment):
 class Scope:
     def __init__(self, node):
         """ node may be None """
-        self._is_with_scope = node and node.kind == tok.WITH
         self._parent = None
         self._kids = []
         self._identifiers = {}
@@ -83,15 +82,11 @@ class Scope:
     def add_scope(self, node):
         self._kids.append(Scope(node))
         self._kids[-1]._parent = self
-        if self._is_with_scope:
-            self._kids[-1]._is_with_scope = True
         return self._kids[-1]
     def add_declaration(self, name, node):
-        if not self._is_with_scope:
-            self._identifiers[name] = node
+        self._identifiers[name] = node
     def add_reference(self, name, node):
-        if not self._is_with_scope:
-            self._references.append((name, node))
+        self._references.append((name, node))
     def get_identifier(self, name):
         if name in self._identifiers:
             return self._identifiers[name]
@@ -106,14 +101,55 @@ class Scope:
         if self._parent:
             return self._parent.resolve_identifier(name)
         return None
-    def get_undeclared_identifiers(self):
-        identifiers = []
-        for child in self._kids:
-            identifiers += child.get_undeclared_identifiers()
+    def get_unreferenced_and_undeclared_identifiers(self):
+        """ Returns a tuple of unreferenced and undeclared, where each is a list
+            of (scope, name, node) tuples.
+        """
+        unreferenced = {}
+        undeclared = []
+        self._find_unreferenced_and_undeclared(unreferenced, undeclared, False)
+
+        # Convert "unreferenced" from a dictionary of:
+        #   { (scope, name): node }
+        # to a list of:
+        #   [ (scope, name, node) ]
+        # sorted by node position.
+        unreferenced = [(key[0], key[1], node) for key, node
+                        in unreferenced.items()]
+        unreferenced.sort(key=lambda x: x[2].start_pos())
+
+        return unreferenced, undeclared
+    def _find_unreferenced_and_undeclared(self, unreferenced, undeclared,
+                                          is_in_with_scope):
+        """ unreferenced is a dictionary, such that:
+                (scope, name): node
+            }
+            undeclared is a list, such that: [
+                (scope, name, node)
+            ]
+        """
+        is_in_with_scope = is_in_with_scope or self._node.kind == tok.WITH
+
+        # Add all identifiers as unreferenced. Children scopes will remove
+        # them if they are referenced.  Variables need to be keyed by name
+        # instead of node, because function parameters share the same node.
+        for name, node in self._identifiers.items():
+            unreferenced[(self, name)] = node
+
+        # Remove all declared variables from the "unreferenced" set; add all
+        # undeclared variables to the "undeclared" list.
         for name, node in self._references:
-            if not self.resolve_identifier(name):
-                identifiers.append(node)
-        return identifiers
+            resolved = self.resolve_identifier(name)
+            if resolved:
+                unreferenced.pop((resolved[0], name), None)
+            else:
+                # with statements cannot have undeclared identifiers.
+                if not is_in_with_scope:
+                    undeclared.append((self, name, node))
+
+        for child in self._kids:
+            child._find_unreferenced_and_undeclared(unreferenced, undeclared,
+                                                    is_in_with_scope)
     def find_scope(self, node):
         if not self._node:
             return None
@@ -298,9 +334,14 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         else:
             declare_scope.add_declaration(name, node)
 
-    for node in scope.get_undeclared_identifiers():
-        if not node.atom in imports:
+    unreferenced, undeclared = scope.get_unreferenced_and_undeclared_identifiers()
+    for decl_scope, name, node in undeclared:
+        if not name in imports:
             report(node, 'undeclared_identifier')
+    for ref_scope, name, node in unreferenced:
+        # Ignore the outer scope.
+        if ref_scope != scope:
+            report(node, 'unreferenced_identifier')
 
 def _getreporter(visitor, report):
     def onpush(node):
@@ -328,11 +369,13 @@ def _get_scope_checks(scope, report):
         @visitation.visit('push', tok.NAME)
         def _name(self, node):
             if node.node_index == 0 and node.parent.kind == tok.COLON and node.parent.parent.kind == tok.RC:
-                pass # left side of object literal
-            elif node.parent.kind == tok.CATCH:
+                return # left side of object literal
+            if node.parent.kind == tok.VAR:
+                _warn_or_declare(scopes[-1], node.atom, node, report)
+                return
+            if node.parent.kind == tok.CATCH:
                 scopes[-1].add_declaration(node.atom, node)
-            else:
-                scopes[-1].add_reference(node.atom, node)
+            scopes[-1].add_reference(node.atom, node)
 
         @visitation.visit('push', tok.FUNCTION)
         def _push_func(self, node):
@@ -349,11 +392,6 @@ def _get_scope_checks(scope, report):
         @visitation.visit('pop', tok.FUNCTION, tok.LEXICALSCOPE, tok.WITH)
         def _pop_scope(self, node):
             scopes.pop()
-
-        @visitation.visit('push', tok.VAR)
-        def _push_var(self, node):
-            for kid in node.kids:
-                _warn_or_declare(scopes[-1], kid.atom, node, report)
 
     return scope_checks
 

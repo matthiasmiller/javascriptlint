@@ -56,6 +56,7 @@ warnings = {
     'mismatch_ctrl_comments': 'mismatched control comment; "ignore" and "end" control comments must have a one-to-one correspondence',
     'redeclared_var': 'redeclaration of {0} {1}',
     'undeclared_identifier': 'undeclared identifier: {0}',
+    'unreferenced_identifier': 'identifier is declared but never referenced: {0}',
     'jsl_cc_not_understood': 'couldn\'t understand control comment using /*jsl:keyword*/ syntax',
     'nested_comment': 'nested comment',
     'legacy_cc_not_understood': 'couldn\'t understand control comment using /*@keyword@*/ syntax',
