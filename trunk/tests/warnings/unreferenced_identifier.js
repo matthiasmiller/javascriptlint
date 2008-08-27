@@ -72,6 +72,10 @@ function unreferenced_identifier() {
     tmp = ref_dec--; /*warning:inc_dec_within_stmt*/
     tmp = -tmp;
 
+    /* Test named functions as references. */
+    var fn = function ref_func() { return 42; }; /*warning:unreferenced_identifier*/
+    fn();
+
     /* Test nested scopes. */
     function get_callback(parm) {
         return function() {
