@@ -12,7 +12,7 @@ def isidentifier(text):
 def readfile(path):
     file = codecs.open(path, 'r', 'utf-8')
     contents = file.read()
-    if contents[0] == unicode(codecs.BOM_UTF8, 'utf8'):
+    if contents and contents[0] == unicode(codecs.BOM_UTF8, 'utf8'):
         contents = contents[1:]
     return contents
 
