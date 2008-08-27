@@ -15,6 +15,7 @@ else:
     sys.path.append(setup.get_lib_path())
 
 import pyjsl.conf
+import pyjsl.htmlparse
 import pyjsl.jsparse
 import pyjsl.util
 import test
@@ -130,7 +131,7 @@ if __name__ == '__main__':
 
     if options.unittest:
         suite = unittest.TestSuite();
-        for module in [pyjsl.jsparse, pyjsl.util]:
+        for module in [pyjsl.htmlparse, pyjsl.jsparse, pyjsl.util]:
             suite.addTest(unittest.findTestCases(module))
 
         runner = unittest.TextTestRunner(verbosity=options.verbosity)
