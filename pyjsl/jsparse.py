@@ -12,6 +12,10 @@ _tok_names = dict(zip(
     [getattr(tok, prop) for prop in dir(tok)],
     ['tok.%s' % prop for prop in dir(tok)]
 ))
+_op_names = dict(zip(
+    [getattr(op, prop) for prop in dir(op)],
+    ['op.%s' % prop for prop in dir(op)]
+))
 
 NodePos = pyspidermonkey.NodePos
 
@@ -204,11 +208,19 @@ def is_compilable_unit(script):
     return pyspidermonkey.is_compilable_unit(script)
 
 def _dump_node(node, depth=0):
-    print '.    '*depth,
     if node is None:
-        print '(none)'
+        print '     '*depth,
+        print '(None)'
+        print
     else:
-        print '%s\t%s, %s' % (_tok_names[node.kind], node.start_pos(), node.end_pos())
+        print '     '*depth,
+        print '%s, %s' % (_tok_names[node.kind], _op_names[node.opcode])
+        print '     '*depth,
+        print '%s - %s' % (node.start_pos(), node.end_pos())
+        if hasattr(node, 'atom'):
+            print '     '*depth,
+            print 'atom: %s' % node.atom
+        print
         for node in node.kids:
             _dump_node(node, depth+1)
 
