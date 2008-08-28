@@ -69,7 +69,9 @@ warnings = {
     'dup_option_explicit': 'duplicate "option explicit" control comment',
     'invalid_fallthru': 'unexpected "fallthru" control comment',
     'invalid_pass': 'unexpected "pass" control comment',
-    'want_assign_or_call': 'expected an assignment or function call'
+    'want_assign_or_call': 'expected an assignment or function call',
+    'no_return_value': 'function {0} does not always return a value',
+    'anon_no_return_value': 'anonymous function does not always return value'
 }
 
 _visitors = []
@@ -94,15 +96,22 @@ def _get_branch_in_for(node):
         return None
 
 def _get_exit_points(node):
+    """ Returns a set of exit points, which may be:
+        * None, indicating a code path with no specific exit point.
+        * a node of type tok.BREAK, tok.RETURN, tok.THROW.
+    """
     if node.kind == tok.LC:
-        # Only if the last child contains it
         exit_points = set([None])
         for kid in node.kids:
-            # "None" is only a valid exit point for the last statement.
-            if None in exit_points:
-                exit_points.remove(None)
             if kid:
-                exit_points |= _get_exit_points(kid)
+                # Merge in the kid's exit points.
+                kid_exit_points = _get_exit_points(kid)
+                exit_points |= kid_exit_points
+
+                # Stop if the kid always exits.
+                if not None in kid_exit_points:
+                    exit_points.discard(None)
+                    break
     elif node.kind == tok.IF:
         # Only if both branches have an exit point
         cond_, if_, else_ = node.kids
@@ -126,10 +135,9 @@ def _get_exit_points(node):
         # Correct the "None" exit point.
         exit_points.remove(None)
 
-        # Check if the switch contained any break
-        if tok.BREAK in exit_points:
-            exit_points.remove(tok.BREAK)
-            exit_points.add(None)
+        # Convert "break" into None
+        exit_points = set(map(lambda node: node \
+                if node and node.kind != tok.BREAK else None, exit_points))
 
         # Check if the switch had a default case
         if not switch_has_default:
@@ -139,13 +147,13 @@ def _get_exit_points(node):
         if switch_has_final_fallthru:
             exit_points.add(None)
     elif node.kind == tok.BREAK:
-        exit_points = set([tok.BREAK])
+        exit_points = set([node])
     elif node.kind == tok.WITH:
         exit_points = _get_exit_points(node.kids[-1])
     elif node.kind == tok.RETURN:
-        exit_points = set([tok.RETURN])
+        exit_points = set([node])
     elif node.kind == tok.THROW:
-        exit_points = set([tok.THROW])
+        exit_points = set([node])
     elif node.kind == tok.TRY:
         try_, catch_, finally_ = node.kids
 
@@ -369,9 +377,10 @@ def useless_assign(node):
 
 @lookfor(tok.BREAK, tok.CONTINUE, tok.RETURN, tok.THROW)
 def unreachable_code(node):
-    if node.parent.kind == tok.LC and \
-        node.node_index != len(node.parent.kids)-1:
-        raise LintWarning, node.parent.kids[node.node_index+1]
+    if node.parent.kind == tok.LC:
+        for sibling in node.parent.kids[node.node_index+1:]:
+            if not sibling.kind in (tok.VAR, tok.FUNCTION):
+                raise LintWarning, sibling
 
 #TODO: @lookfor(tok.IF)
 def meaningless_block(node):
@@ -445,6 +454,36 @@ def want_assign_or_call(node):
         if grandchild.kind == tok.FUNCTION:
             return
     raise LintWarning, child
+
+def _check_return_value(node):
+    def is_return_with_val(node):
+        return node and node.kind == tok.RETURN and node.kids[0]
+    def is_return_without_val(node):
+        return node and node.kind == tok.RETURN and not node.kids[0]
+
+    node, = node.kids
+    assert node.kind == tok.LC
+
+    exit_points = _get_exit_points(node)
+    if filter(is_return_with_val, exit_points):
+        # If the function returns a value, find all returns without a value.
+        returns = filter(is_return_without_val, exit_points)
+        returns.sort(key=lambda node: node.start_pos())
+        if returns:
+            raise LintWarning, returns[0]
+        # Warn if the function sometimes exits naturally.
+        if None in exit_points:
+            raise LintWarning, node
+
+@lookfor(tok.FUNCTION)
+def no_return_value(node):
+    if node.fn_name:
+        _check_return_value(node)
+
+@lookfor(tok.FUNCTION)
+def anon_no_return_value(node):
+    if not node.fn_name:
+        _check_return_value(node)
 
 @lookfor()
 def mismatch_ctrl_comments(node):

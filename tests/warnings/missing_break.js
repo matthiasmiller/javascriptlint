@@ -92,7 +92,13 @@ function missing_break() {
             return i;
         }
 
-      default:
+      case 9:
+        /* test a break inside a loop */
+        for (i = 0; i < 100; i++) {
+            break;
+        }
+
+      default: /*warning:missing_break*/
         break;
     }
 

@@ -26,4 +26,16 @@ function unreachable_code() {
         throw i;
         i -= 1; /*warning:unreachable_code*/
     }
+
+    function var_test() {
+        return undef;
+        var undef;
+    }
+
+    function func_test() {
+        return fortytwo();
+        function fortytwo() {
+            return 42;
+        }
+    }
 }

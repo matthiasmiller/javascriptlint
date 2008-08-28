@@ -9,10 +9,10 @@ function no_return_value() {
     
     function error2(b) {
         if (b) {
-            return;
+            return; /*warning:no_return_value*/
         }
         else {
-            return ""; /*warning:no_return_value*/
+            return "";
         }
     }
     

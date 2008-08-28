@@ -9,10 +9,10 @@ function anon_no_return_value() {
 
     var error2 = function(b) {
         if (b) {
-            return;
+            return; /*warning:anon_no_return_value*/
         }
         else {
-            return ""; /*warning:anon_no_return_value*/
+            return "";
         }
     };
 
