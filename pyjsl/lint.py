@@ -128,7 +128,8 @@ class Scope:
                 (scope, name, node)
             ]
         """
-        is_in_with_scope = is_in_with_scope or self._node.kind == tok.WITH
+        if self._node and self._node.kind == tok.WITH:
+            is_in_with_scope = True
 
         # Add all identifiers as unreferenced. Children scopes will remove
         # them if they are referenced.  Variables need to be keyed by name
