@@ -194,7 +194,8 @@ def lint_files(paths, lint_error, conf=conf.Conf()):
 
 def _lint_script(script, script_cache, lint_error, conf, import_callback):
     def parse_error(row, col, msg):
-        if not msg in ('redeclared_var', 'var_hides_arg'):
+        if not msg in ('anon_no_return_value', 'no_return_value',
+                       'redeclared_var', 'var_hides_arg'):
             parse_errors.append((jsparse.NodePos(row, col), msg))
 
     def report(node, errname):
