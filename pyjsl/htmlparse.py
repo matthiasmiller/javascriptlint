@@ -41,6 +41,10 @@ class _Parser(HTMLParser.HTMLParser):
         self._node_positions = jsparse.NodePositions(self.rawdata + data)
         HTMLParser.HTMLParser.feed(self, data)
 
+    def unknown_decl(self, data):
+        # Ignore unknown declarations instead of raising an exception.
+        pass
+
     def getscripts(self):
         return self._scripts
 
@@ -77,4 +81,9 @@ ok&amp;
             "",
             "<!--\nvar s = '<script></script>';\n-->"
         ])
-
+    def testConditionalComments(self):
+        html = """
+<!--[if IE]>This is Internet Explorer.<![endif]-->
+<![if !IE]>This is not Internet Explorer<![endif]>
+"""
+        findscripts(html)
