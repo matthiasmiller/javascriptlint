@@ -124,17 +124,44 @@ initpyspidermonkey_d(void) {
 typedef struct JSContextData {
     PyObject* node_class;
     PyObject* error_callback;
+    long int first_lineno;
+    long int first_index;
 } JSContextData;
+
+static long int
+to_pyjsl_lineno(JSContextData* data, long int lineno) {
+    /* SpiderMonkey uses 1-based line numbers. */
+    return lineno + data->first_lineno - 1;
+}
+
+static long int
+to_pyjsl_index(JSContextData* data, long int lineno, long int index) {
+    /* SpiderMonkey uses 1-based line numbers. */
+    if (lineno - 1 == 0)
+        return index + data->first_index;
+    else
+        return index;
+}
+
+static JSTokenPtr
+to_pyjsl_pos(JSContextData* data, JSTokenPtr ptr) {
+    JSTokenPtr newptr = ptr;
+    newptr.index = to_pyjsl_index(data, ptr.lineno, ptr.index);
+    newptr.lineno = to_pyjsl_lineno(data, ptr.lineno);
+    return newptr;
+}
 
 static void
 error_reporter(JSContext* cx, const char* message, JSErrorReport* report)
 {
     JSContextData* data = JS_GetContextPrivate(cx);
-    long int line = report->lineno - 1;
+    long int line = to_pyjsl_lineno(data, report->lineno);
     long int col = -1;
 
-    if (report->uclinebuf)
+    if (report->uclinebuf) {
         col = report->uctokenptr - report->uclinebuf;
+        col = to_pyjsl_index(data, report->lineno, col);
+    }
 
     // TODO: Check return value
     (void)PyObject_CallFunction(data->error_callback, "lls",
@@ -169,6 +196,7 @@ jsnode_to_pynode(JSContext* context, JSParseNode* jsnode) {
     JSContextData* data = JS_GetContextPrivate(context);
     PyObject* pynode = NULL;
     PyObject* kids = NULL;
+    JSTokenPtr tokenptr;
 
     /* TODO: make sure no tuple item already exists */
 
@@ -192,13 +220,15 @@ jsnode_to_pynode(JSContext* context, JSParseNode* jsnode) {
         goto fail;
 
     /* pass the position */
-    if (PyObject_SetAttrString(pynode, "_start_line", Py_BuildValue("i", jsnode->pn_pos.begin.lineno-1)) == -1)
+    tokenptr = to_pyjsl_pos(data, jsnode->pn_pos.begin);
+    if (PyObject_SetAttrString(pynode, "_start_line", Py_BuildValue("i", tokenptr.lineno)) == -1)
         goto fail;
-    if (PyObject_SetAttrString(pynode, "_start_col", Py_BuildValue("i", jsnode->pn_pos.begin.index)) == -1)
+    if (PyObject_SetAttrString(pynode, "_start_col", Py_BuildValue("i", tokenptr.index)) == -1)
         goto fail;
-    if (PyObject_SetAttrString(pynode, "_end_line", Py_BuildValue("i", jsnode->pn_pos.end.lineno-1)) == -1)
+    tokenptr = to_pyjsl_pos(data, jsnode->pn_pos.end);
+    if (PyObject_SetAttrString(pynode, "_end_line", Py_BuildValue("i", tokenptr.lineno)) == -1)
         goto fail;
-    if (PyObject_SetAttrString(pynode, "_end_col", Py_BuildValue("i", jsnode->pn_pos.end.index)) == -1)
+    if (PyObject_SetAttrString(pynode, "_end_col", Py_BuildValue("i", tokenptr.index)) == -1)
         goto fail;
 
     if ((jsnode->pn_type == TOK_NAME || jsnode->pn_type == TOK_DOT ||
@@ -370,8 +400,11 @@ module_parse(PyObject *self, PyObject *args) {
     error = "encountered an unknown error";
 
     /* validate arguments */
-    if (!PyArg_ParseTuple(args, "sOO", &m.script, &m.ctx_data.node_class, &m.ctx_data.error_callback))
+    if (!PyArg_ParseTuple(args, "sOOll", &m.script, &m.ctx_data.node_class,
+        &m.ctx_data.error_callback, &m.ctx_data.first_lineno,
+        &m.ctx_data.first_index)) {
         return NULL;
+    }
 
     if (!PyCallable_Check(m.ctx_data.node_class)) {
         PyErr_SetString(PyExc_ValueError, "\"node_class\" must be callable");
