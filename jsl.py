@@ -42,9 +42,8 @@ def get_test_files():
 
 def run_tests():
     for file in get_test_files():
-        if file.endswith('.htm') or file.endswith('.html'):
-            continue #TODO
-        elif file.endswith('.js'):
+        ext = os.path.splitext(file)[1]
+        if ext in ('.htm', '.html', '.js'):
             try:
                 test.run(file)
             except test.TestError, error:
