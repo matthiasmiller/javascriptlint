@@ -151,7 +151,7 @@ def _parse_comments(script, node_positions, ignore_ranges):
             opcode = 'JSOP_CPP_COMMENT'
         opcode = opcode[5:].lower()
 
-        start_offset = match.start()+1
+        start_offset = match.start()
         end_offset = match.end()
 
         # Make sure it doesn't start in a string or regexp
@@ -177,15 +177,27 @@ def _parse_comments(script, node_positions, ignore_ranges):
         else:
             pos = match.start()+1
 
-def parse(script, error_callback):
+def parse(script, error_callback, startpos=None):
+    """ All node positions will be relative to startpos. This allows scripts
+        to be embedded in a file (for example, HTML).
+    """
     def _wrapped_callback(line, col, msg):
         assert msg.startswith('JSMSG_')
         msg = msg[6:].lower()
         error_callback(line, col, msg)
 
-    return pyspidermonkey.parse(script, _Node, _wrapped_callback)
+    startpos = startpos or NodePos(0,0)
+    return pyspidermonkey.parse(script, _Node, _wrapped_callback,
+                                startpos.line, startpos.col)
 
-def parsecomments(script, root_node):
+def parsecomments(script, root_node, startpos=None):
+    """ All node positions will be relative to startpos. This allows scripts
+        to be embedded in a file (for example, HTML).
+    """
+    # Use dummy text to rebase node positions.
+    if startpos:
+        script = ('\n' * startpos.line) + (' ' * startpos.col) + script
+
     positions = NodePositions(script)
     comment_ignore_ranges = NodeRanges()
 
@@ -195,7 +207,7 @@ def parsecomments(script, root_node):
         elif node.kind == tok.STRING or \
                 (node.kind == tok.OBJECT and node.opcode == op.REGEXP):
             start_offset = positions.to_offset(node.start_pos())
-            end_offset = positions.to_offset(node.end_pos())
+            end_offset = positions.to_offset(node.end_pos()) - 1
             comment_ignore_ranges.add(start_offset, end_offset)
         for kid in node.kids:
             if kid:
@@ -323,6 +335,45 @@ class TestCompilableUnit(unittest.TestCase):
         )
         for text, result in tests:
             self.assertEquals(is_compilable_unit(text), result)
+
+class TestLineOffset(unittest.TestCase):
+    def testErrorPos(self):
+        def geterror(script, startpos):
+            errors = []
+            def onerror(line, col, msg):
+                errors.append((line, col, msg))
+            parse(script, onerror, startpos)
+            self.assertEquals(len(errors), 1)
+            return errors[0]
+        self.assertEquals(geterror(' ?', None), (0, 1, 'syntax_error'))
+        self.assertEquals(geterror('\n ?', None), (1, 1, 'syntax_error'))
+        self.assertEquals(geterror(' ?', NodePos(1,1)), (1, 2, 'syntax_error'))
+        self.assertEquals(geterror('\n ?', NodePos(1,1)), (2, 1, 'syntax_error'))
+    def testNodePos(self):
+        def getnodepos(script, startpos):
+            root = parse(script, None, startpos)
+            self.assertEquals(root.kind, tok.LC)
+            var, = root.kids
+            self.assertEquals(var.kind, tok.VAR)
+            return var.start_pos()
+        self.assertEquals(getnodepos('var x;', None), NodePos(0,0))
+        self.assertEquals(getnodepos(' var x;', None), NodePos(0,1))
+        self.assertEquals(getnodepos('\n\n var x;', None), NodePos(2,1))
+        self.assertEquals(getnodepos('var x;', NodePos(3,4)), NodePos(3,4))
+        self.assertEquals(getnodepos(' var x;', NodePos(3,4)), NodePos(3,5))
+        self.assertEquals(getnodepos('\n\n var x;', NodePos(3,4)), NodePos(5,1))
+    def testComments(self):
+        def testcomment(comment, startpos, expectedpos):
+            root = parse(comment, None, startpos)
+            comment, = parsecomments(comment, root, startpos)
+            self.assertEquals(comment.start_pos(), expectedpos)
+        for comment in ('/*comment*/', '//comment'):
+            testcomment(comment, None, NodePos(0,0))
+            testcomment(' %s' % comment, None, NodePos(0,1))
+            testcomment('\n\n %s' % comment, None, NodePos(2,1))
+            testcomment('%s' % comment, NodePos(3,4), NodePos(3,4))
+            testcomment(' %s' % comment, NodePos(3,4), NodePos(3,5))
+            testcomment('\n\n %s' % comment, NodePos(3,4), NodePos(5,1))
 
 if __name__ == '__main__':
     unittest.main()
