@@ -4,6 +4,7 @@ import os.path
 import re
 
 import conf
+import htmlparse
 import jsparse
 import visitation
 import warnings
@@ -177,27 +178,72 @@ class Scope:
             node.end_pos() <= self._node.end_pos()):
             return self
 
+class _Script:
+    def __init__(self):
+        self._imports = set()
+        self.scope = Scope()
+    def importscript(self, script):
+        self._imports.add(script)
+    def hasglobal(self, name):
+        return not self._findglobal(name, set()) is None
+    def _findglobal(self, name, searched):
+        """ searched is a set of all searched scripts """
+        # Avoid recursion.
+        if self in searched:
+            return
+
+        # Check this scope.
+        if self.scope.get_identifier(name):
+            return self
+        searched.add(self)
+
+        # Search imported scopes.
+        for script in self._imports:
+            global_ = script._findglobal(name, searched)
+            if global_:
+                return global_
+
 def lint_files(paths, lint_error, conf=conf.Conf()):
-    def lint_file(path):
+    def lint_file(path, kind):
         def import_script(import_path):
             import_path = os.path.join(os.path.dirname(path), import_path)
-            return lint_file(import_path)
+            return lint_file(import_path, 'js')
         def _lint_error(*args):
             return lint_error(normpath, *args)
 
         normpath = util.normpath(path)
-        if not normpath in lint_cache:
-            lint_cache[normpath] = {}
-            script = util.readfile(path)
-            print normpath
-            _lint_script(script, lint_cache[normpath], _lint_error, conf, import_script)
+        if normpath in lint_cache:
+            return lint_cache[normpath]
+        print normpath
+        contents = util.readfile(path)
+        lint_cache[normpath] = _Script()
+
+        script_parts = []
+        if kind == 'js':
+            script_parts.append((None, contents))
+        elif kind == 'html':
+            for script in htmlparse.findscripts(contents):
+                if script['src']:
+                    other = import_script(script['src'])
+                    lint_cache[normpath].importscript(other)
+                if script['script'].strip():
+                    script_parts.append((script['startpos'], script['script']))
+        else:
+            assert False, 'Unsupported file kind: %s' % kind
+
+        _lint_script_parts(script_parts, lint_cache[normpath], _lint_error, conf, import_script)
         return lint_cache[normpath]
 
     lint_cache = {}
     for path in paths:
-        lint_file(path)
+        ext = os.path.splitext(path)[1]
+        if ext.lower() in ['.htm', '.html']:
+            lint_file(path, 'html')
+        else:
+            lint_file(path, 'js')
 
-def _lint_script(script, script_cache, lint_error, conf, import_callback):
+def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
+                      report_native, report_lint, import_callback):
     def parse_error(row, col, msg):
         if not msg in ('anon_no_return_value', 'no_return_value',
                        'redeclared_var', 'var_hides_arg'):
@@ -234,42 +280,22 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
                     fallthrus.remove(fallthru)
                     return
 
-        _report(node.start_pos(), errname, True)
-
-    def _report(pos, errname, require_key):
-        try:
-            if not conf[errname]:
-                return
-        except KeyError, err:
-            if require_key:
-                raise
-
-        for start, end in ignores:
-            if pos >= start and pos <= end:
-                return
-
-        return lint_error(pos.line, pos.col, errname)
+        report_lint(node, errname)
 
     parse_errors = []
-    ignores = []
     declares = []
     import_paths = []
     fallthrus = []
     passes = []
 
-    root = jsparse.parse(script, parse_error)
+    root = jsparse.parse(script, parse_error, scriptpos)
     if not root:
-        # Cache empty results for this script.
-        assert not script_cache
-        script_cache['imports'] = set()
-        script_cache['scope'] = Scope()
-
         # Report errors and quit.
         for pos, msg in parse_errors:
-            _report(pos, msg, False)
+            report_native(pos, msg)
         return
 
-    comments = jsparse.parsecomments(script, root)
+    comments = jsparse.parsecomments(script, root, scriptpos)
     start_ignore = None
     for comment in comments:
         cc = _parse_control_comment(comment)
@@ -313,7 +339,7 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
 
     # Wait to report parse errors until loading jsl:ignore directives.
     for pos, msg in parse_errors:
-        _report(pos, msg, False)
+        report_native(pos, msg)
 
     # Find all visitors and convert them into "onpush" callbacks that call "report"
     visitors = {
@@ -323,12 +349,8 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         for kind, callbacks in visitors[event].items():
             visitors[event][kind] = [_getreporter(callback, report) for callback in callbacks]
 
-    assert not script_cache
-    imports = script_cache['imports'] = set()
-    scope = script_cache['scope'] = Scope()
-
     # Push the scope/variable checks.
-    visitation.make_visitors(visitors, [_get_scope_checks(scope, report)])
+    visitation.make_visitors(visitors, [_get_scope_checks(script_cache.scope, report)])
 
     # kickoff!
     _lint_node(root, visitors)
@@ -339,28 +361,55 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         report(fallthru, 'invalid_pass')
 
     # Process imports by copying global declarations into the universal scope.
-    imports |= set(conf['declarations'])
-    imports |= _globals
     for path in import_paths:
-        cache = import_callback(path)
-        imports |= cache['imports']
-        imports |= set(cache['scope'].get_identifiers())
+        script_cache.importscript(import_callback(path))
 
     for name, node in declares:
-        declare_scope = scope.find_scope(node)
+        declare_scope = script_cache.scope.find_scope(node)
         if declare_scope.get_identifier(name):
             report(node, 'redeclared_var')
         else:
             declare_scope.add_declaration(name, node)
 
+def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
+    def report_lint(node, errname):
+        _report(node.start_pos(), errname, True)
+
+    def report_native(pos, errname):
+        _report(pos, errname, False)
+
+    def _report(pos, errname, require_key):
+        try:
+            if not conf[errname]:
+                return
+        except KeyError, err:
+            if require_key:
+                raise
+
+        for start, end in ignores:
+            if pos >= start and pos <= end:
+                return
+
+        return lint_error(pos.line, pos.col, errname)
+
+    for scriptpos, script in script_parts:
+        ignores = []
+        _lint_script_part(scriptpos, script, script_cache, conf, ignores,
+                          report_native, report_lint, import_callback)
+
+    scope = script_cache.scope
     unreferenced, undeclared = scope.get_unreferenced_and_undeclared_identifiers()
     for decl_scope, name, node in undeclared:
-        if not name in imports:
-            report(node, 'undeclared_identifier')
+        if name in conf['declarations']:
+            continue
+        if name in _globals:
+            continue
+        if not script_cache.hasglobal(name):
+            report_lint(node, 'undeclared_identifier')
     for ref_scope, name, node in unreferenced:
         # Ignore the outer scope.
         if ref_scope != scope:
-            report(node, 'unreferenced_identifier')
+            report_lint(node, 'unreferenced_identifier')
 
 def _getreporter(visitor, report):
     def onpush(node):
