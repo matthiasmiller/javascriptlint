@@ -382,6 +382,23 @@ def unreachable_code(node):
             if not sibling.kind in (tok.VAR, tok.FUNCTION):
                 raise LintWarning, sibling
 
+@lookfor(tok.FOR)
+def unreachable_code_(node):
+    # Warn if the for loop always exits.
+    preamble, code = node.kids
+    if preamble.kind == tok.RESERVED:
+        pre, condition, post = preamble.kids
+        if post:
+            if not None in _get_exit_points(code):
+                raise LintWarning, post
+
+@lookfor(tok.DO)
+def unreachable_code__(node):
+    # Warn if the do..while loop always exits.
+    code, condition = node.kids
+    if not None in _get_exit_points(code):
+        raise LintWarning, condition
+
 #TODO: @lookfor(tok.IF)
 def meaningless_block(node):
     condition, if_, else_ = node.kids
