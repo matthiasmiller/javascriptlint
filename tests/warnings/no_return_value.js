@@ -16,6 +16,12 @@ function no_return_value() {
         }
     }
     
+    function error3(b) { /*warning:no_return_value*/
+        if (b) {
+            return "";
+        }
+    }
+    
     function correct(b) {
         if (b)
             return;

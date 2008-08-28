@@ -118,6 +118,8 @@ def _get_exit_points(node):
         exit_points = _get_exit_points(if_)
         if else_:
             exit_points |= _get_exit_points(else_)
+        else:
+            exit_points.add(None)
     elif node.kind == tok.SWITCH:
         exit_points = set([None])
 
