@@ -72,16 +72,20 @@ def _parse_control_comment(comment):
     return (comment, keyword, parms)
 
 class Scope:
-    def __init__(self, node):
-        """ node may be None """
+    """ Outer-level scopes will never be associated with a node.
+        Inner-level scopes will always be associated with a node.
+    """
+    def __init__(self):
         self._parent = None
         self._kids = []
         self._identifiers = {}
         self._references = []
-        self._node = node
+        self._node = None
     def add_scope(self, node):
-        self._kids.append(Scope(node))
+        assert not node is None
+        self._kids.append(Scope())
         self._kids[-1]._parent = self
+        self._kids[-1]._node = node
         return self._kids[-1]
     def add_declaration(self, name, node):
         self._identifiers[name] = node
@@ -157,21 +161,21 @@ class Scope:
             child._find_unreferenced_and_undeclared(unreferenced, undeclared,
                                                     is_in_with_scope)
     def find_scope(self, node):
-        if not self._node:
-            return None
-
         for kid in self._kids:
             scope = kid.find_scope(node)
             if scope:
                 return scope
 
         # Always add it to the outer scope.
-        if not self._parent or \
-            (node.start_pos() >= self._node.start_pos() and \
-            node.end_pos() <= self._node.end_pos()):
+        if not self._parent:
+            assert not self._node
             return self
 
-        return None
+        # Conditionally add it to an inner scope.
+        assert self._node
+        if (node.start_pos() >= self._node.start_pos() and \
+            node.end_pos() <= self._node.end_pos()):
+            return self
 
 def lint_files(paths, lint_error, conf=conf.Conf()):
     def lint_file(path):
@@ -258,7 +262,7 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
         # Cache empty results for this script.
         assert not script_cache
         script_cache['imports'] = set()
-        script_cache['scope'] = Scope(None)
+        script_cache['scope'] = Scope()
 
         # Report errors and quit.
         for pos, msg in parse_errors:
@@ -321,7 +325,7 @@ def _lint_script(script, script_cache, lint_error, conf, import_callback):
 
     assert not script_cache
     imports = script_cache['imports'] = set()
-    scope = script_cache['scope'] = Scope(root)
+    scope = script_cache['scope'] = Scope()
 
     # Push the scope/variable checks.
     visitation.make_visitors(visitors, [_get_scope_checks(scope, report)])
