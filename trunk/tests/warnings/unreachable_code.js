@@ -38,4 +38,27 @@ function unreachable_code() {
             return 42;
         }
     }
+
+    /* test unreachable statements in for loops */
+    for (i = 0; i < 10; i++) { /*warning:unreachable_code*/
+        if (i)
+            break;
+        else
+            return;
+    }
+    for (i = 0; i < 10; ) {
+        if (i)
+            break;
+        else
+            return;
+    }
+
+    /* test unreachable statements in do..while loops. */
+    do {
+        if (i)
+            break;
+        else
+            return;
+    } while (i); /*warning:unreachable_code*/
+
 }

@@ -94,7 +94,7 @@ function missing_break() {
 
       case 9:
         /* test a break inside a loop */
-        for (i = 0; i < 100; i++) {
+        for (;;) {
             break;
         }
 
