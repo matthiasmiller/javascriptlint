@@ -138,8 +138,10 @@ def _get_exit_points(node):
         exit_points.remove(None)
 
         # Convert "break" into None
-        exit_points = set(map(lambda node: node \
-                if node and node.kind != tok.BREAK else None, exit_points))
+        def break_to_none(node):
+            if node and node.kind != tok.BREAK:
+                return node
+        exit_points = set(map(break_to_none, exit_points))
 
         # Check if the switch had a default case
         if not switch_has_default:
