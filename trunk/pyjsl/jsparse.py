@@ -21,9 +21,10 @@ NodePos = pyspidermonkey.NodePos
 
 class NodePositions:
     " Given a string, allows [x] lookups for NodePos line and column numbers."
-    def __init__(self, text):
+    def __init__(self, text, start_pos=None):
         # Find the length of each line and incrementally sum all of the lengths
         # to determine the ending position of each line.
+        self._start_pos = start_pos
         self._lines = text.splitlines(True)
         lines = [0] + [len(x) for x in self._lines]
         for x in range(1, len(lines)):
@@ -32,18 +33,34 @@ class NodePositions:
     def from_offset(self, offset):
         line = bisect.bisect(self._line_offsets, offset)-1
         col = offset - self._line_offsets[line]
+        if self._start_pos:
+            if line == 0:
+                col += self._start_pos.col
+            line += self._start_pos.line
         return NodePos(line, col)
     def to_offset(self, pos):
+        pos = self._to_rel_pos(pos)
         offset = self._line_offsets[pos.line] + pos.col
         assert offset <= self._line_offsets[pos.line+1] # out-of-bounds col num
         return offset
     def text(self, start, end):
         assert start <= end
+        start, end = self._to_rel_pos(start), self._to_rel_pos(end)
         # Trim the ending first in case it's a single line.
         lines = self._lines[start.line:end.line+1]
         lines[-1] = lines[-1][:end.col+1]
         lines[0] = lines[0][start.col:]
         return ''.join(lines)
+    def _to_rel_pos(self, pos):
+        " converts a position to a position relative to self._start_pos "
+        if not self._start_pos:
+            return pos
+        line, col = pos.line, pos.col
+        line -= self._start_pos.line
+        if line == 0:
+            col -= self._start_pos.col
+        assert line >= 0 and col >= 0 # out-of-bounds node position
+        return NodePos(line, col)
 
 class NodeRanges:
     def __init__(self):
@@ -194,11 +211,7 @@ def parsecomments(script, root_node, startpos=None):
     """ All node positions will be relative to startpos. This allows scripts
         to be embedded in a file (for example, HTML).
     """
-    # Use dummy text to rebase node positions.
-    if startpos:
-        script = ('\n' * startpos.line) + (' ' * startpos.col) + script
-
-    positions = NodePositions(script)
+    positions = NodePositions(script, startpos)
     comment_ignore_ranges = NodeRanges()
 
     def process(node):
@@ -290,6 +303,14 @@ class TestNodePositions(unittest.TestCase):
         self.assertEquals(pos.to_offset(NodePos(0, 2)), 2)
         self.assertEquals(pos.to_offset(NodePos(1, 0)), 5)
         self.assertEquals(pos.to_offset(NodePos(3, 1)), 11)
+    def testStartPos(self):
+        pos = NodePositions('abc\r\ndef\n\nghi', NodePos(3,4))
+        self.assertEquals(pos.to_offset(NodePos(3, 4)), 0)
+        self.assertEquals(pos.to_offset(NodePos(3, 5)), 1)
+        self.assertEquals(pos.from_offset(0), NodePos(3, 4))
+        self.assertEquals(pos.text(NodePos(3, 4), NodePos(3, 4)), 'a')
+        self.assertEquals(pos.text(NodePos(3, 4), NodePos(3, 6)), 'abc')
+        self.assertEquals(pos.text(NodePos(3, 6), NodePos(4, 2)), 'c\r\ndef')
 
 class TestNodeRanges(unittest.TestCase):
     def testAdd(self):
