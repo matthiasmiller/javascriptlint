@@ -145,7 +145,7 @@ class _Node:
 
         return True
 
-def _parse_comments(script, node_positions, ignore_ranges):
+def findpossiblecomments(script, node_positions):
     pos = 0
     single_line_re = r"//[^\r\n]*"
     multi_line_re = r"/\*(.*?)\*/"
@@ -169,30 +169,29 @@ def _parse_comments(script, node_positions, ignore_ranges):
         opcode = opcode[5:].lower()
 
         start_offset = match.start()
-        end_offset = match.end()
+        end_offset = match.end()-1
 
-        # Make sure it doesn't start in a string or regexp
-        if not ignore_ranges.has(start_offset):
-            start_pos = node_positions.from_offset(start_offset)
-            end_pos = node_positions.from_offset(end_offset)
-            kwargs = {
-                'type': 'COMMENT',
-                'atom': comment_text,
-                'opcode': opcode,
-                '_start_line': start_pos.line,
-                '_start_col': start_pos.col,
-                '_end_line': end_pos.line,
-                '_end_col': end_pos.col,
-                'parent': None,
-                'kids': [],
-                'node_index': None
-            }
-            comment_node = _Node()
-            comment_node.__dict__.update(kwargs)
-            comments.append(comment_node)
-            pos = match.end()
-        else:
-            pos = match.start()+1
+        start_pos = node_positions.from_offset(start_offset)
+        end_pos = node_positions.from_offset(end_offset)
+        kwargs = {
+            'type': 'COMMENT',
+            'atom': comment_text,
+            'opcode': opcode,
+            '_start_line': start_pos.line,
+            '_start_col': start_pos.col,
+            '_end_line': end_pos.line,
+            '_end_col': end_pos.col,
+            'parent': None,
+            'kids': [],
+            'node_index': None
+        }
+        comment_node = _Node()
+        comment_node.__dict__.update(kwargs)
+        comments.append(comment_node)
+
+        # Start searching immediately after the start of the comment in case
+        # this one was within a string or a regexp.
+        pos = match.start()+1
 
 def parse(script, error_callback, startpos=None):
     """ All node positions will be relative to startpos. This allows scripts
@@ -207,27 +206,36 @@ def parse(script, error_callback, startpos=None):
     return pyspidermonkey.parse(script, _Node, _wrapped_callback,
                                 startpos.line, startpos.col)
 
-def parsecomments(script, root_node, startpos=None):
-    """ All node positions will be relative to startpos. This allows scripts
-        to be embedded in a file (for example, HTML).
-    """
-    positions = NodePositions(script, startpos)
+def filtercomments(possible_comments, node_positions, root_node):
     comment_ignore_ranges = NodeRanges()
 
     def process(node):
         if node.kind == tok.NUMBER:
-            node.atom = positions.text(node.start_pos(), node.end_pos())
+            node.atom = node_positions.text(node.start_pos(), node.end_pos())
         elif node.kind == tok.STRING or \
                 (node.kind == tok.OBJECT and node.opcode == op.REGEXP):
-            start_offset = positions.to_offset(node.start_pos())
-            end_offset = positions.to_offset(node.end_pos()) - 1
+            start_offset = node_positions.to_offset(node.start_pos())
+            end_offset = node_positions.to_offset(node.end_pos()) - 1
             comment_ignore_ranges.add(start_offset, end_offset)
         for kid in node.kids:
             if kid:
                 process(kid)
     process(root_node)
 
-    return _parse_comments(script, positions, comment_ignore_ranges)
+    comments = []
+    for comment in possible_comments:
+        start_offset = node_positions.to_offset(comment.start_pos())
+        end_offset = node_positions.to_offset(comment.end_pos())
+        if comment_ignore_ranges.has(start_offset):
+            continue
+        comment_ignore_ranges.add(start_offset, end_offset)
+        comments.append(comment)
+    return comments
+
+def findcomments(script, root_node, start_pos=None):
+    node_positions = NodePositions(script, start_pos)
+    possible_comments = findpossiblecomments(script, node_positions)
+    return filtercomments(possible_comments, node_positions, root_node)
 
 def is_compilable_unit(script):
     return pyspidermonkey.is_compilable_unit(script)
@@ -258,7 +266,7 @@ def dump_tree(script):
 class TestComments(unittest.TestCase):
     def _test(self, script, expected_comments):
         root = parse(script, lambda line, col, msg: None)
-        comments = parsecomments(script, root)
+        comments = findcomments(script, root)
         encountered_comments = [node.atom for node in comments]
         self.assertEquals(encountered_comments, list(expected_comments))
     def testSimpleComments(self):
@@ -386,7 +394,7 @@ class TestLineOffset(unittest.TestCase):
     def testComments(self):
         def testcomment(comment, startpos, expectedpos):
             root = parse(comment, None, startpos)
-            comment, = parsecomments(comment, root, startpos)
+            comment, = findcomments(comment, root, startpos)
             self.assertEquals(comment.start_pos(), expectedpos)
         for comment in ('/*comment*/', '//comment'):
             testcomment(comment, None, NodePos(0,0))

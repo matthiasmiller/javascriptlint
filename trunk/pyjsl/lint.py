@@ -288,6 +288,9 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
     fallthrus = []
     passes = []
 
+    node_positions = jsparse.NodePositions(script, scriptpos)
+    possible_comments = jsparse.findpossiblecomments(script, node_positions)
+
     root = jsparse.parse(script, parse_error, scriptpos)
     if not root:
         # Report errors and quit.
@@ -295,7 +298,7 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
             report_native(pos, msg)
         return
 
-    comments = jsparse.parsecomments(script, root, scriptpos)
+    comments = jsparse.filtercomments(possible_comments, node_positions, root)
     start_ignore = None
     for comment in comments:
         cc = _parse_control_comment(comment)
