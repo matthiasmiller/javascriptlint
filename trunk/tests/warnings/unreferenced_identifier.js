@@ -15,7 +15,7 @@ function unreferenced_identifier() {
 
     /* Test an unreferenced parameter. */
     var z = new function(unreferenced_parm) { /*warning:unreferenced_identifier*/
-    }
+    };
     z.prop = 42;
 
     /* Test an unreferenced variable. */
@@ -80,7 +80,7 @@ function unreferenced_identifier() {
     function get_callback(parm) {
         return function() {
             return parm;
-        }
+        };
     }
     return get_callback(42);
 }

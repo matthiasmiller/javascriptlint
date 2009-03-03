@@ -9,8 +9,8 @@ function declare() {
     /*jsl:declare document*//*warning:redeclared_var*/
 }
 
-var i = 10
-/*jsl:declare sample*//*warning:missing_semicolon*/
+var i = 10 /*warning:missing_semicolon*/
+/*jsl:declare sample*/
 
 /* declare was scoped */
 window.alert('JavaScript Lint');/*warning:undeclared_identifier*/

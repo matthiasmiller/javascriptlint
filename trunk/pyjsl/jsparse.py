@@ -253,6 +253,9 @@ def _dump_node(node, depth=0):
         if hasattr(node, 'atom'):
             print '     '*depth,
             print 'atom: %s' % node.atom
+        if node.no_semi:
+            print '     '*depth,
+            print '(no semicolon)'
         print
         for node in node.kids:
             _dump_node(node, depth+1)
