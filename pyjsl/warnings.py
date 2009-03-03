@@ -22,6 +22,24 @@ import util
 import visitation
 from pyspidermonkey import tok, op
 
+_ALL_TOKENS = tuple(filter(lambda x: x != tok.EOF, tok.__dict__.values()))
+
+def _get_assigned_lambda(node):
+    """ Given a node "x = function() {}", returns "function() {}".
+    """
+    value = None
+    if node.kind == tok.SEMI:
+        assign_node, = node.kids
+        if assign_node and assign_node.kind == tok.ASSIGN:
+            ignored, value = assign_node.kids
+    elif node.kind == tok.VAR:
+        variables = node.kids
+        if variables:
+            value, = variables[-1].kids
+
+    if value and value.kind == tok.FUNCTION and value.opcode == op.ANONFUNOBJ:
+        return value
+
 # TODO: document inspect, node:opcode, etc
 
 warnings = {
@@ -63,6 +81,7 @@ warnings = {
     'var_hides_arg': 'variable {0} hides argument',
     'duplicate_formal': 'TODO',
     'missing_semicolon': 'missing semicolon',
+    'missing_semicolon_for_lambda': 'missing semicolon for lambda assignment',
     'ambiguous_newline': 'unexpected end of line; it is ambiguous whether these lines are part of the same statement',
     'missing_option_explicit': 'the "option explicit" control comment is missing',
     'partial_option_explicit': 'the "option explicit" control comment, if used, must be in the first script tag',
@@ -538,9 +557,20 @@ def var_hides_arg(node):
 def duplicate_formal(node):
     pass
 
-@lookfor()
+@lookfor(*_ALL_TOKENS)
 def missing_semicolon(node):
-    pass
+    if node.no_semi:
+        if not _get_assigned_lambda(node):
+            raise LintWarning, node
+
+@lookfor(*_ALL_TOKENS)
+def missing_semicolon_for_lambda(node):
+    if node.no_semi:
+        # spidermonkey sometimes returns incorrect positions for var
+        # statements, so use the position of the lambda instead.
+        lambda_ = _get_assigned_lambda(node)
+        if lambda_:
+            raise LintWarning, lambda_
 
 @lookfor()
 def ambiguous_newline(node):

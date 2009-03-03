@@ -32,7 +32,6 @@ def _get_expected_warnings(script):
         for warning in regexp.findall(lines[i]):
             # TODO: implement these
             unimpl_warnings = ('ambiguous_newline', 'dup_option_explicit',
-                'missing_semicolon'
             )
             if not warning in unimpl_warnings:
                 warnings.append((i, warning))

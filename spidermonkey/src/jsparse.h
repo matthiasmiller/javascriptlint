@@ -317,6 +317,7 @@ struct JSParseNode {
     JSParseNode         *pn_next;       /* to align dval and pn_u on RISCs */
     JSTokenStream       *pn_ts;         /* token stream for error reports */
     JSAtom              *pn_source;     /* saved source for decompilation */
+    JSBool              pn_no_semi;     /* missing semicolon */
 };
 
 #define pn_funAtom      pn_u.func.funAtom

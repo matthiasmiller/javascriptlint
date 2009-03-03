@@ -248,6 +248,7 @@ NewParseNode(JSContext *cx, JSTokenStream *ts, JSParseNodeArity arity,
     pn->pn_next = NULL;
     pn->pn_ts = ts;
     pn->pn_source = NULL;
+    pn->pn_no_semi = JS_FALSE;
     return pn;
 }
 
@@ -324,6 +325,7 @@ NewBinary(JSContext *cx, JSTokenType tt,
     pn->pn_next = NULL;
     pn->pn_ts = NULL;
     pn->pn_source = NULL;
+    pn->pn_no_semi = JS_FALSE;
     return pn;
 }
 
@@ -2738,7 +2740,8 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
              * insertion after do-while.  See the testcase and discussion in
              * http://bugzilla.mozilla.org/show_bug.cgi?id=238945.
              */
-            (void) js_MatchToken(cx, ts, TOK_SEMI);
+            if (!js_MatchToken(cx, ts, TOK_SEMI))
+                pn->pn_no_semi = JS_TRUE;
             return pn;
         }
         break;
@@ -3476,6 +3479,8 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
             return NULL;
         pn->pn_type = TOK_SEMI;
         pn->pn_kid = NULL;
+        if (tt == TOK_EOL)
+            pn->pn_no_semi = JS_TRUE;
         return pn;
 
 #if JS_HAS_DEBUGGER_KEYWORD
@@ -3588,7 +3593,8 @@ Statement(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc)
         }
     }
 
-    (void) js_MatchToken(cx, ts, TOK_SEMI);
+    if (!js_MatchToken(cx, ts, TOK_SEMI))
+        pn->pn_no_semi = JS_TRUE;
     return pn;
 }
 
@@ -4311,6 +4317,7 @@ MemberExpr(JSContext *cx, JSTokenStream *ts, JSTreeContext *tc,
             pn2->pn_next = NULL;
             pn2->pn_ts = ts;
             pn2->pn_source = NULL;
+            pn2->pn_no_semi = JS_FALSE;
             pn = pn2;
         }
     }

@@ -376,7 +376,13 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
 
 def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
     def report_lint(node, errname):
-        _report(node.start_pos(), errname, True)
+        # TODO: This is ugly hardcoding to improve the error positioning of
+        # "missing_semicolon" errors.
+        if errname == 'missing_semicolon' or errname == 'missing_semicolon_for_lambda':
+            pos = node.end_pos()
+        else:
+            pos = node.start_pos()
+        _report(pos, errname, True)
 
     def report_native(pos, errname):
         _report(pos, errname, False)

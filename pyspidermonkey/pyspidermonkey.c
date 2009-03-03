@@ -303,6 +303,9 @@ jsnode_to_pynode(JSContext* context, JSParseNode* jsnode) {
             goto fail;
     }
 
+    if (PyObject_SetAttrString(pynode, "no_semi", PyBool_FromLong(jsnode->pn_no_semi)) == -1)
+        goto fail;
+
     switch (jsnode->pn_arity) {
     case PN_FUNC:
         kids = PyTuple_New(1);
