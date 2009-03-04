@@ -206,6 +206,9 @@ class _Script:
 def lint_files(paths, lint_error, conf=conf.Conf()):
     def lint_file(path, kind):
         def import_script(import_path):
+            # The user can specify paths using backslashes (such as when
+            # linting Windows scripts on a posix environment.
+            import_path = import_path.replace('\\', os.sep)
             import_path = os.path.join(os.path.dirname(path), import_path)
             return lint_file(import_path, 'js')
         def _lint_error(*args):
