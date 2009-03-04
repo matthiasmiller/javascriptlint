@@ -252,7 +252,7 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
                        'redeclared_var', 'var_hides_arg'):
             parse_errors.append((jsparse.NodePos(row, col), msg))
 
-    def report(node, errname):
+    def report(node, errname, **errargs):
         if errname == 'empty_statement' and node.kind == tok.LC:
             for pass_ in passes:
                 if pass_.start_pos() > node.start_pos() and \
@@ -283,7 +283,7 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
                     fallthrus.remove(fallthru)
                     return
 
-        report_lint(node, errname)
+        report_lint(node, errname, **errargs)
 
     parse_errors = []
     declares = []
@@ -373,19 +373,19 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
     for name, node in declares:
         declare_scope = script_cache.scope.find_scope(node)
         if declare_scope.get_identifier(name):
-            report(node, 'redeclared_var')
+            report(node, 'redeclared_var', name=name)
         else:
             declare_scope.add_declaration(name, node)
 
 def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
-    def report_lint(node, errname):
+    def report_lint(node, errname, **errargs):
         # TODO: This is ugly hardcoding to improve the error positioning of
         # "missing_semicolon" errors.
         if errname == 'missing_semicolon' or errname == 'missing_semicolon_for_lambda':
             pos = node.end_pos()
         else:
             pos = node.start_pos()
-        errdesc = warnings.warnings[errname]
+        errdesc = warnings.format_error(errname, **errargs)
         _report(pos, errname, errdesc, True)
 
     def report_native(pos, errname):
@@ -419,11 +419,11 @@ def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_call
         if name in _globals:
             continue
         if not script_cache.hasglobal(name):
-            report_lint(node, 'undeclared_identifier')
+            report_lint(node, 'undeclared_identifier', name=name)
     for ref_scope, name, node in unreferenced:
         # Ignore the outer scope.
         if ref_scope != scope:
-            report_lint(node, 'unreferenced_identifier')
+            report_lint(node, 'unreferenced_identifier', name=name)
 
 def _getreporter(visitor, report):
     def onpush(node):
@@ -431,15 +431,15 @@ def _getreporter(visitor, report):
             ret = visitor(node)
             assert ret is None, 'visitor should raise an exception, not return a value'
         except warnings.LintWarning, warning:
-            report(warning.node, visitor.warning)
+            report(warning.node, visitor.warning, **warning.errargs)
     return onpush
 
 def _warn_or_declare(scope, name, node, report):
     other = scope.get_identifier(name)
     if other and other.kind == tok.FUNCTION and name in other.fn_args:
-        report(node, 'var_hides_arg')
+        report(node, 'var_hides_arg', name=name)
     elif other:
-        report(node, 'redeclared_var')
+        report(node, 'redeclared_var', name=name)
     else:
         scope.add_declaration(name, node)
 
