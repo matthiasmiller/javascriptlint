@@ -367,6 +367,8 @@ class TestCompilableUnit(unittest.TestCase):
         )
         for text, result in tests:
             self.assertEquals(is_compilable_unit(text), result)
+        # NOTE: This seems like a bug.
+        self.assert_(is_compilable_unit("/* test"))
 
 class TestLineOffset(unittest.TestCase):
     def testErrorPos(self):
