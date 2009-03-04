@@ -72,13 +72,13 @@ warnings = {
     'trailing_comma_in_array': 'extra comma is not recommended in array initializers',
     'useless_quotes': 'the quotation marks are unnecessary',
     'mismatch_ctrl_comments': 'mismatched control comment; "ignore" and "end" control comments must have a one-to-one correspondence',
-    'redeclared_var': 'redeclaration of {0} {1}',
-    'undeclared_identifier': 'undeclared identifier: {0}',
-    'unreferenced_identifier': 'identifier is declared but never referenced: {0}',
+    'redeclared_var': 'redeclaration of {name}',
+    'undeclared_identifier': 'undeclared identifier: {name}',
+    'unreferenced_identifier': 'identifier is declared but never referenced: {name}',
     'jsl_cc_not_understood': 'couldn\'t understand control comment using /*jsl:keyword*/ syntax',
     'nested_comment': 'nested comment',
     'legacy_cc_not_understood': 'couldn\'t understand control comment using /*@keyword@*/ syntax',
-    'var_hides_arg': 'variable {0} hides argument',
+    'var_hides_arg': 'variable {name} hides argument',
     'duplicate_formal': 'TODO',
     'missing_semicolon': 'missing semicolon',
     'missing_semicolon_for_lambda': 'missing semicolon for lambda assignment',
@@ -89,9 +89,17 @@ warnings = {
     'invalid_fallthru': 'unexpected "fallthru" control comment',
     'invalid_pass': 'unexpected "pass" control comment',
     'want_assign_or_call': 'expected an assignment or function call',
-    'no_return_value': 'function {0} does not always return a value',
+    'no_return_value': 'function {name} does not always return a value',
     'anon_no_return_value': 'anonymous function does not always return value'
 }
+
+def format_error(errname, **errargs):
+    errdesc = warnings[errname]
+    try:
+        errdesc = re.sub(r"{(\w+)}", lambda match: errargs[match.group(1)], errdesc)
+    except (TypeError, KeyError):
+        raise KeyError, 'Invalid keyword in error: ' + errdesc
+    return errdesc
 
 _visitors = []
 def lookfor(*args):
@@ -104,8 +112,9 @@ def lookfor(*args):
     return decorate
 
 class LintWarning(Exception):
-    def __init__(self, node):
+    def __init__(self, node, **errargs):
         self.node = node
+        self.errargs = errargs
 
 def _get_branch_in_for(node):
         " Returns None if this is not one of the branches in a 'for' "
@@ -496,6 +505,8 @@ def want_assign_or_call(node):
     raise LintWarning, child
 
 def _check_return_value(node):
+    name = node.fn_name or '(anonymous function)'
+
     def is_return_with_val(node):
         return node and node.kind == tok.RETURN and node.kids[0]
     def is_return_without_val(node):
@@ -510,10 +521,10 @@ def _check_return_value(node):
         returns = filter(is_return_without_val, exit_points)
         returns.sort(key=lambda node: node.start_pos())
         if returns:
-            raise LintWarning, returns[0]
+            raise LintWarning(returns[0], name=name)
         # Warn if the function sometimes exits naturally.
         if None in exit_points:
-            raise LintWarning, node
+            raise LintWarning(node, name=name)
 
 @lookfor(tok.FUNCTION)
 def no_return_value(node):
