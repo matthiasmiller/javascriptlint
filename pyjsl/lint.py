@@ -382,12 +382,14 @@ def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_call
             pos = node.end_pos()
         else:
             pos = node.start_pos()
-        _report(pos, errname, True)
+        errdesc = warnings.warnings[errname]
+        _report(pos, errname, errdesc, True)
 
     def report_native(pos, errname):
-        _report(pos, errname, False)
+        # TODO: Format the error.
+        _report(pos, errname, errname, False)
 
-    def _report(pos, errname, require_key):
+    def _report(pos, errname, errdesc, require_key):
         try:
             if not conf[errname]:
                 return
@@ -399,7 +401,7 @@ def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_call
             if pos >= start and pos <= end:
                 return
 
-        return lint_error(pos.line, pos.col, errname)
+        return lint_error(pos.line, pos.col, errname, errdesc)
 
     for scriptpos, script in script_parts:
         ignores = []

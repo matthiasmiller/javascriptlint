@@ -44,7 +44,7 @@ def run(path):
     unexpected_warnings = []
     conf = _get_conf(script)
 
-    def lint_error(path, line, col, errname):
+    def lint_error(path, line, col, errname, errdesc):
         warning = (line, errname)
 
         # Bad hack to fix line numbers on ambiguous else statements

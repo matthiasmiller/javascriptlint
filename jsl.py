@@ -55,9 +55,9 @@ def _dump(paths):
         pyjsl.jsparse.dump_tree(script)
 
 def _lint(paths, conf):
-    def lint_error(path, line, col, errname):
+    def lint_error(path, line, col, errname, errdesc):
         _lint_results['warnings'] = _lint_results['warnings'] + 1
-        print '%s(%i): %s' % (path, line+1, errname)
+        print '%s(%i): %s' % (path, line+1, errdesc)
     pyjsl.lint.lint_files(paths, lint_error, conf=conf)
 
 def _resolve_paths(path, recurse):
