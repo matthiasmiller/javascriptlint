@@ -55,7 +55,7 @@ class Conf:
         self._settings = {
             'recurse': recurse,
             'show_context': BooleanSetting(False),
-            'output-format': StringSetting('TODO'),
+            'output-format': StringSetting('__FILE__(__LINE__): __ERROR__'),
             'lambda_assign_requires_semicolon': BooleanSetting(False),
             'legacy_control_comments': BooleanSetting(True),
             'jscript_function_extensions': BooleanSetting(False),

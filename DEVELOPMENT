@@ -20,7 +20,7 @@
 Use the following command to upgrade SpiderMonkey. Replace X.X.X with the
 version number. js-X.X.X is the directory containing the new version of
 SpiderMonkey. Use a relative path for pretty commit messages.
- 
+
 svn_load_dirs.pl \
     -t X.X.X \
     -p svn_load_dirs.conf \

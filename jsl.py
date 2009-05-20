@@ -57,7 +57,8 @@ def _dump(paths):
 def _lint(paths, conf):
     def lint_error(path, line, col, errname, errdesc):
         _lint_results['warnings'] = _lint_results['warnings'] + 1
-        print '%s(%i): %s' % (path, line+1, errdesc)
+        print pyjsl.util.format_error(conf['output-format'], path, line, col,
+                                      errname, errdesc)
     pyjsl.lint.lint_files(paths, lint_error, conf=conf)
 
 def _resolve_paths(path, recurse):
