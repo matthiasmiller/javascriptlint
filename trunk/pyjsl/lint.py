@@ -435,12 +435,13 @@ def _getreporter(visitor, report):
     return onpush
 
 def _warn_or_declare(scope, name, node, report):
-    other = scope.get_identifier(name)
+    parent_scope, other = scope.resolve_identifier(name) or (None, None)
     if other and other.kind == tok.FUNCTION and name in other.fn_args:
         report(node, 'var_hides_arg', name=name)
-    elif other:
+    elif other and parent_scope == scope:
         report(node, 'redeclared_var', name=name)
     else:
+        # TODO: Warn when hiding a variable in a parent scope.
         scope.add_declaration(name, node)
 
 def _get_scope_checks(scope, report):
