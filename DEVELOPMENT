@@ -13,6 +13,7 @@
 > implement semicolons warning
 > implement line break warning
 > add test for syntax error
+> consider reimplementing abiguous_newline
 
 
 ** UPGRADING SPIDERMONKEY

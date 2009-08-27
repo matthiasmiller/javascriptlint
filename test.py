@@ -31,8 +31,7 @@ def _get_expected_warnings(script):
     for i in range(0, len(lines)):
         for warning in regexp.findall(lines[i]):
             # TODO: implement these
-            unimpl_warnings = ('ambiguous_newline', 'dup_option_explicit',
-            )
+            unimpl_warnings = ('dup_option_explicit',)
             if not warning in unimpl_warnings:
                 warnings.append((i, warning))
     return warnings
