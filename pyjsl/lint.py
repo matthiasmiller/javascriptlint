@@ -252,7 +252,7 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
                        'redeclared_var', 'var_hides_arg'):
             parse_errors.append((jsparse.NodePos(row, col), msg))
 
-    def report(node, errname, **errargs):
+    def report(node, errname, pos=None, **errargs):
         if errname == 'empty_statement' and node.kind == tok.LC:
             for pass_ in passes:
                 if pass_.start_pos() > node.start_pos() and \
@@ -283,7 +283,7 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
                     fallthrus.remove(fallthru)
                     return
 
-        report_lint(node, errname, **errargs)
+        report_lint(node, errname, pos, **errargs)
 
     parse_errors = []
     declares = []
@@ -334,8 +334,15 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
                 passes.append(node)
         else:
             if comment.opcode == 'c_comment':
-                if '/*' in comment.atom or comment.atom.endswith('/'):
-                    report(comment, 'nested_comment')
+                # Look for nested C-style comments.
+                nested_comment = comment.atom.find('/*')
+                if nested_comment < 0 and comment.atom.endswith('/'):
+                    nested_comment = len(comment.atom) - 1
+                # Report at the actual error of the location. Add two
+                # characters for the opening two characters.
+                if nested_comment >= 0:
+                    pos = node_positions.from_offset(node_positions.to_offset(comment.start_pos()) + 2 + nested_comment)
+                    report(comment, 'nested_comment', pos=pos)
             if comment.atom.lower().startswith('jsl:'):
                 report(comment, 'jsl_cc_not_understood')
             elif comment.atom.startswith('@'):
@@ -378,15 +385,9 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
             declare_scope.add_declaration(name, node)
 
 def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
-    def report_lint(node, errname, **errargs):
-        # TODO: This is ugly hardcoding to improve the error positioning of
-        # "missing_semicolon" errors.
-        if errname == 'missing_semicolon' or errname == 'missing_semicolon_for_lambda':
-            pos = node.end_pos()
-        else:
-            pos = node.start_pos()
+    def report_lint(node, errname, pos=None, **errargs):
         errdesc = warnings.format_error(errname, **errargs)
-        _report(pos, errname, errdesc, True)
+        _report(pos or node.start_pos(), errname, errdesc, True)
 
     def report_native(pos, errname):
         # TODO: Format the error.
@@ -431,7 +432,13 @@ def _getreporter(visitor, report):
             ret = visitor(node)
             assert ret is None, 'visitor should raise an exception, not return a value'
         except warnings.LintWarning, warning:
-            report(warning.node, visitor.warning, **warning.errargs)
+            # TODO: This is ugly hardcoding to improve the error positioning of
+            # "missing_semicolon" errors.
+            if visitor.warning in ('missing_semicolon', 'missing_semicolon_for_lambda'):
+                pos = warning.node.end_pos()
+            else:
+                pos = None
+            report(warning.node, visitor.warning, pos=pos, **warning.errargs)
     return onpush
 
 def _warn_or_declare(scope, name, node, report):
