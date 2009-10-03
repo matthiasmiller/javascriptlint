@@ -4,13 +4,6 @@ import os
 import re
 import sys
 
-try:
-    import setup
-except ImportError:
-    pass
-else:
-    setup.addsearchpath()
-
 import pyjsl.conf
 import pyjsl.lint
 
@@ -102,7 +95,7 @@ def main():
         if ext in ('.htm', '.html', '.js'):
             try:
                 _testfile(file)
-            except test.TestError, error:
+            except TestError, error:
                 haderrors = True
                 print error
     sys.exit(haderrors)

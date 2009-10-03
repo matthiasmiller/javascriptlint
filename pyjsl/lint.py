@@ -10,7 +10,7 @@ import visitation
 import warnings
 import util
 
-from pyspidermonkey import tok, op
+from spidermonkey import tok, op
 
 _newline_kinds = (
     'eof', 'comma', 'dot', 'semi', 'colon', 'lc', 'rc', 'lp', 'rb', 'assign',
