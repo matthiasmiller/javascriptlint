@@ -7,11 +7,11 @@ import sys
 import unittest
 from optparse import OptionParser
 
-import pyjsl.conf
-import pyjsl.htmlparse
-import pyjsl.jsparse
-import pyjsl.lint
-import pyjsl.util
+import conf
+import htmlparse
+import jsparse
+import lint
+import util
 
 _lint_results = {
     'warnings': 0,
@@ -20,15 +20,15 @@ _lint_results = {
 
 def _dump(paths):
     for path in paths:
-        script = pyjsl.util.readfile(path)
-        pyjsl.jsparse.dump_tree(script)
+        script = util.readfile(path)
+        jsparse.dump_tree(script)
 
-def _lint(paths, conf):
+def _lint(paths, conf_):
     def lint_error(path, line, col, errname, errdesc):
         _lint_results['warnings'] = _lint_results['warnings'] + 1
-        print pyjsl.util.format_error(conf['output-format'], path, line, col,
+        print util.format_error(conf_['output-format'], path, line, col,
                                       errname, errdesc)
-    pyjsl.lint.lint_files(paths, lint_error, conf=conf)
+    lint.lint_files(paths, lint_error, conf=conf_)
 
 def _resolve_paths(path, recurse):
     if os.path.isfile(path):
@@ -88,9 +88,9 @@ def main():
         parser.print_help()
         sys.exit()
 
-    conf = pyjsl.conf.Conf()
+    conf_ = conf.Conf()
     if options.conf:
-        conf.loadfile(options.conf)
+        conf_.loadfile(options.conf)
 
     profile_func = _profile_disabled
     if options.profile:
@@ -98,21 +98,21 @@ def main():
 
     if options.unittest:
         suite = unittest.TestSuite();
-        for module in [pyjsl.htmlparse, pyjsl.jsparse, pyjsl.util]:
+        for module in [htmlparse, jsparse, util]:
             suite.addTest(unittest.findTestCases(module))
 
         runner = unittest.TextTestRunner(verbosity=options.verbosity)
         runner.run(suite)
 
     paths = []
-    for recurse, path in conf['paths']:
+    for recurse, path in conf_['paths']:
         paths.extend(_resolve_paths(path, recurse))
     for arg in args:
         paths.extend(_resolve_paths(arg, False))
     if options.dump:
         profile_func(_dump, paths)
     else:
-        profile_func(_lint, paths, conf)
+        profile_func(_lint, paths, conf_)
 
     if _lint_results['errors']:
         sys.exit(3)
