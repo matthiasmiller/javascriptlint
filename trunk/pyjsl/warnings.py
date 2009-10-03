@@ -20,7 +20,8 @@ import types
 
 import util
 import visitation
-from pyspidermonkey import tok, op
+
+from spidermonkey import tok, op
 
 _ALL_TOKENS = tuple(filter(lambda x: x != tok.EOF, tok.__dict__.values()))
 

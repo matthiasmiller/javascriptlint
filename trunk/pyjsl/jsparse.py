@@ -5,8 +5,8 @@ import bisect
 import re
 import unittest
 
-import pyspidermonkey
-from pyspidermonkey import tok, op
+import spidermonkey
+from spidermonkey import tok, op
 
 _tok_names = dict(zip(
     [getattr(tok, prop) for prop in dir(tok)],
@@ -17,7 +17,7 @@ _op_names = dict(zip(
     ['op.%s' % prop for prop in dir(op)]
 ))
 
-NodePos = pyspidermonkey.NodePos
+NodePos = spidermonkey.NodePos
 
 class NodePositions:
     " Given a string, allows [x] lookups for NodePos line and column numbers."
@@ -203,8 +203,8 @@ def parse(script, error_callback, startpos=None):
         error_callback(line, col, msg)
 
     startpos = startpos or NodePos(0,0)
-    return pyspidermonkey.parse(script, _Node, _wrapped_callback,
-                                startpos.line, startpos.col)
+    return spidermonkey.parse(script, _Node, _wrapped_callback,
+                              startpos.line, startpos.col)
 
 def filtercomments(possible_comments, node_positions, root_node):
     comment_ignore_ranges = NodeRanges()
@@ -238,7 +238,7 @@ def findcomments(script, root_node, start_pos=None):
     return filtercomments(possible_comments, node_positions, root_node)
 
 def is_compilable_unit(script):
-    return pyspidermonkey.is_compilable_unit(script)
+    return spidermonkey.is_compilable_unit(script)
 
 def _dump_node(node, depth=0):
     if node is None:

@@ -7,13 +7,6 @@ import sys
 import unittest
 from optparse import OptionParser
 
-try:
-    import setup
-except ImportError:
-    pass
-else:
-    setup.addsearchpath()
-
 import pyjsl.conf
 import pyjsl.htmlparse
 import pyjsl.jsparse
