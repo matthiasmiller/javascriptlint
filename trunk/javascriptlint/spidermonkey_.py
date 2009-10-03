@@ -10,7 +10,7 @@ def _get_lib_path():
     dist = distutils.dist.Distribution()
     build = distutils.command.build.build(dist)
     build.finalize_options()
-    return os.path.join(os.path.dirname(__file__), '..', '..', build.build_platlib)
+    return os.path.join(os.path.dirname(__file__), '..', build.build_platlib, 'javascriptlint')
 
 sys.path.insert(0, _get_lib_path())
 try:
