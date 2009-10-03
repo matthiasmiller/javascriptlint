@@ -1,5 +1,15 @@
+#!/usr/bin/python
 # vim: ts=4 sw=4 expandtab
+import os
 import re
+import sys
+
+try:
+    import setup
+except ImportError:
+    pass
+else:
+    setup.addsearchpath()
 
 import pyjsl.conf
 import pyjsl.lint
@@ -36,7 +46,7 @@ def _get_expected_warnings(script):
                 warnings.append((i, warning))
     return warnings
 
-def run(path):
+def _testfile(path):
     # Parse the script and find the expected warnings.
     script = open(path).read()
     expected_warnings = _get_expected_warnings(script)
@@ -69,4 +79,34 @@ def run(path):
             errors.append('\tline %i: %s' % (line+1, warning))
     if errors:
         raise TestError, '\n'.join(errors)
+
+def _get_test_files():
+    # Get a list of test files.
+    dir_ = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tests')
+
+    all_files = []
+    for root, dirs, files in os.walk(dir_):
+        all_files += [os.path.join(dir_, root, file) for file in files]
+        if '.svn' in dirs:
+            dirs.remove('.svn')
+        # TODO
+        if 'conf' in dirs:
+            dirs.remove('conf')
+    all_files.sort()
+    return all_files
+
+def main():
+    haderrors = False
+    for file in _get_test_files():
+        ext = os.path.splitext(file)[1]
+        if ext in ('.htm', '.html', '.js'):
+            try:
+                _testfile(file)
+            except test.TestError, error:
+                haderrors = True
+                print error
+    sys.exit(haderrors)
+
+if __name__  == '__main__':
+    main()
 
