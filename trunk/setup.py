@@ -7,18 +7,25 @@ import os
 import subprocess
 import sys
 
+class _MakefileError(Exception):
+    pass
+
 def _runmakefiles(distutils_dir, build_opt=1, args=[]):
     # First build SpiderMonkey.
-    subprocess.check_call(['make', '-f', 'Makefile.ref', '-C',
+    ret = subprocess.call(['make', '-f', 'Makefile.ref', '-C',
                            'spidermonkey/src', 'BUILD_OPT=%i' % build_opt] + \
-                            args)
+                           args)
+    if ret != 0:
+        raise _MakefileError, 'Error running make.'
 
     # Then copy the files to the build directory.
     env = dict(os.environ)
     if distutils_dir:
         env['DISTUTILS_DIR'] = distutils_dir
-    subprocess.check_call(['make', '-f', 'Makefile.SpiderMonkey',
-                          'BUILD_OPT=%i' % build_opt] + args, env=env)
+    ret = subprocess.call(['make', '-f', 'Makefile.SpiderMonkey',
+                           'BUILD_OPT=%i' % build_opt] + args, env=env)
+    if ret != 0:
+        raise _MakefileError, 'Error running make.'
 
 class _MyBuild(distutils.command.build.build):
     def run(self):
