@@ -4,7 +4,7 @@
 # import the development version first, and if that fails, it goes after the
 # real version.
 try:
-	from spidermonkey_ import *
+	from pyspidermonkey_ import *
 except ImportError:
 	from pyspidermonkey import *
 

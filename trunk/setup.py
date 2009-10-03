@@ -59,7 +59,7 @@ if __name__ == '__main__':
         cmdclass = cmdclass,
         description = 'JavaScript Lint',
         ext_modules = [pyspidermonkey],
-        packages = ['javascriptlint', 'javascriptlint.pyjsl'],
+        packages = ['javascriptlint'],
         scripts = ['jsl']
     )
     try:
@@ -71,7 +71,7 @@ if __name__ == '__main__':
             console = ['jsl.py'],
             options = {
                 'py2exe': {
-                    'excludes': ['pyjsl.spidermonkey_'],
+                    'excludes': ['javascriptlint.spidermonkey_'],
                     'bundle_files': 1
                 }
             },
