@@ -82,7 +82,7 @@ warnings = {
     'nested_comment': 'nested comment',
     'legacy_cc_not_understood': 'couldn\'t understand control comment using /*@keyword@*/ syntax',
     'var_hides_arg': 'variable {name} hides argument',
-    'duplicate_formal': 'TODO',
+    'duplicate_formal': 'duplicate formal argument {name}',
     'missing_semicolon': 'missing semicolon',
     'missing_semicolon_for_lambda': 'missing semicolon for lambda assignment',
     'ambiguous_newline': 'unexpected end of line; it is ambiguous whether these lines are part of the same statement',

@@ -1,7 +1,89 @@
 # vim: ts=4 sw=4 expandtab
 import os
+import unittest
 
 import warnings
+
+def _getwarningsconf():
+    lines = []
+    for name in sorted(warnings.warnings.keys()):
+        message = warnings.warnings[name]
+        sign = '+'
+        if name == 'block_without_braces':
+            sign = '-'
+        assert len(name) < 29
+        lines.append(sign + name.ljust(29) + '# ' + message)
+    return '\n'.join(lines)
+
+DEFAULT_CONF = """\
+#
+# Configuration File for JavaScript Lint %(version)s
+# Developed by Matthias Miller (http://www.JavaScriptLint.com)
+#
+# This configuration file can be used to lint a collection of scripts, or to enable
+# or disable warnings for scripts that are linted via the command line.
+#
+
+### Warnings
+# Enable or disable warnings based on requirements.
+# Use "+WarningName" to display or "-WarningName" to suppress.
+#
+%(warnings)s
+
+
+### Output format
+# Customize the format of the error message.
+#    __FILE__ indicates current file path
+#    __FILENAME__ indicates current file name
+#    __LINE__ indicates current line
+#    __ERROR__ indicates error message
+#
+# Visual Studio syntax (default):
++output-format __FILE__(__LINE__): __ERROR__
+# Alternative syntax:
+#+output-format __FILE__:__LINE__: __ERROR__
+
+
+### Context
+# Show the in-line position of the error.
+# Use "+context" to display or "-context" to suppress.
+#
++context
+
+
+### Control Comments
+# Both JavaScript Lint and the JScript interpreter confuse each other with the syntax for
+# the /*@keyword@*/ control comments and JScript conditional comments. (The latter is
+# enabled in JScript with @cc_on@). The /*jsl:keyword*/ syntax is preferred for this reason,
+# although legacy control comments are enabled by default for backward compatibility.
+#
+-legacy_control_comments
+
+
+### Defining identifiers
+# By default, "option explicit" is enabled on a per-file basis.
+# To enable this for all files, use "+always_use_option_explicit"
++always_use_option_explicit
+
+# Define certain identifiers of which the lint is not aware.
+# (Use this in conjunction with the "undeclared identifier" warning.)
+#
+# Common uses for webpages might be:
+#+define window
+#+define document
+
+
+### Files
+# Specify which files to lint
+# Use "+recurse" to enable recursion (disabled by default).
+# To add a set of files, use "+process FileName", "+process Folder\Path\*.js",
+# or "+process Folder\Path\*.htm".
+#
+""" % {
+    'version': '', # TODO
+    'warnings': _getwarningsconf(),
+}
+
 
 class ConfError(Exception):
     def __init__(self, error):
@@ -12,6 +94,12 @@ class ConfError(Exception):
 class Setting:
     wants_parm = False
     wants_dir = False
+
+class DeprecatedSetting(Setting):
+    wants_parm = False
+    value = None
+    def load(self, enabled):
+        raise ConfError, 'This setting is deprecated.'
 
 class BooleanSetting(Setting):
     wants_parm = False
@@ -54,14 +142,13 @@ class Conf:
         recurse = BooleanSetting(False) 
         self._settings = {
             'recurse': recurse,
-            'show_context': BooleanSetting(False),
             'output-format': StringSetting('__FILE__(__LINE__): __ERROR__'),
-            'lambda_assign_requires_semicolon': BooleanSetting(False),
-            'legacy_control_comments': BooleanSetting(True),
-            'jscript_function_extensions': BooleanSetting(False),
-            'always_use_option_explicit': BooleanSetting(False),
+            'lambda_assign_requires_semicolon': DeprecatedSetting(),
+            'legacy_control_comments': BooleanSetting(False),
+            'jscript_function_extensions': DeprecatedSetting(),
+            'always_use_option_explicit': BooleanSetting(True),
             'define': DeclareSetting(),
-            'context': BooleanSetting(False),
+            'context': BooleanSetting(True),
             'process': ProcessSetting(recurse),
             # SpiderMonkey warnings
             'no_return_value': BooleanSetting(True),
@@ -133,4 +220,15 @@ class Conf:
         elif name == 'declarations':
             name = 'define'
         return self._settings[name].value
+
+class TestConf(unittest.TestCase):
+    def testDefaultConf(self):
+        # Make sure the string version corresponds with the code.
+        fromstr = Conf()
+        fromstr.loadtext(DEFAULT_CONF)
+        fromcode = Conf()
+        settings = set(fromcode._settings.keys() + fromstr._settings.keys())
+        for setting in settings:
+            self.assertEquals(fromcode[setting], fromstr[setting],
+                              'Mismatched defaults for %s' % setting)
 

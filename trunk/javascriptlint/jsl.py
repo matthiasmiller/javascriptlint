@@ -81,11 +81,17 @@ def main():
         help="minimal output")
     add("--verbose", dest="verbosity", action="store_const", const=2,
         help="verbose output")
+    add("--help:conf", dest="showdefaultconf", action="store_true", default=False,
+        help="display the default configuration file")
     parser.set_defaults(verbosity=1)
     options, args = parser.parse_args()
 
     if len(sys.argv) == 1:
         parser.print_help()
+        sys.exit()
+
+    if options.showdefaultconf:
+        print conf.DEFAULT_CONF
         sys.exit()
 
     conf_ = conf.Conf()
@@ -98,7 +104,7 @@ def main():
 
     if options.unittest:
         suite = unittest.TestSuite();
-        for module in [htmlparse, jsparse, util]:
+        for module in [conf, htmlparse, jsparse, util]:
             suite.addTest(unittest.findTestCases(module))
 
         runner = unittest.TextTestRunner(verbosity=options.verbosity)
