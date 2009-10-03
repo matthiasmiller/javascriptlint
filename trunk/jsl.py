@@ -17,6 +17,7 @@ else:
 import pyjsl.conf
 import pyjsl.htmlparse
 import pyjsl.jsparse
+import pyjsl.lint
 import pyjsl.util
 
 _lint_results = {
