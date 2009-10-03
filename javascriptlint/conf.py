@@ -36,7 +36,14 @@ DEFAULT_CONF = """\
 #    __FILE__ indicates current file path
 #    __FILENAME__ indicates current file name
 #    __LINE__ indicates current line
-#    __ERROR__ indicates error message
+#    __COL__ indicates current column
+#    __ERROR__ indicates error message (__ERROR_PREFIX__: __ERROR_MSG__)
+#    __ERROR_NAME__ indicates error name (used in configuration file)
+#    __ERROR_PREFIX__ indicates error prefix
+#    __ERROR_MSG__ indicates error message
+#
+# For machine-friendly output, the output format can be prefixed with
+# "encode:". If specified, all items will be encoded with C-slashes.
 #
 # Visual Studio syntax (default):
 +output-format __FILE__(__LINE__): __ERROR__
