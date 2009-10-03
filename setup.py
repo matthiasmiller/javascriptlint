@@ -2,6 +2,7 @@
 # vim: ts=4 sw=4 expandtab
 from distutils.core import setup, Extension
 import os
+import sys
 
 # Add the bin directory to the module search path
 def get_lib_path():
@@ -11,6 +12,9 @@ def get_lib_path():
     build = distutils.command.build.build(dist)
     build.finalize_options()
     return os.path.join(os.path.dirname(__file__), build.build_platlib)
+
+def addsearchpath():
+    sys.path.append(get_lib_path())
 
 if __name__ == '__main__':
     if os.name == 'nt':

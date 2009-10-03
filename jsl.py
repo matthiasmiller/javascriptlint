@@ -12,42 +12,17 @@ try:
 except ImportError:
     pass
 else:
-    sys.path.append(setup.get_lib_path())
+    setup.addsearchpath()
 
 import pyjsl.conf
 import pyjsl.htmlparse
 import pyjsl.jsparse
 import pyjsl.util
-import test
 
 _lint_results = {
     'warnings': 0,
     'errors': 0
 }
-
-def get_test_files():
-    # Get a list of test files.
-    dir_ = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tests')
-
-    all_files = []
-    for root, dirs, files in os.walk(dir_):
-        all_files += [os.path.join(dir_, root, file) for file in files]
-        if '.svn' in dirs:
-            dirs.remove('.svn')
-        # TODO
-        if 'conf' in dirs:
-            dirs.remove('conf')
-    all_files.sort()
-    return all_files
-
-def run_tests():
-    for file in get_test_files():
-        ext = os.path.splitext(file)[1]
-        if ext in ('.htm', '.html', '.js'):
-            try:
-                test.run(file)
-            except test.TestError, error:
-                print error
 
 def _dump(paths):
     for path in paths:
@@ -102,8 +77,6 @@ if __name__ == '__main__':
     add = parser.add_option
     add("--conf", dest="conf", metavar="CONF",
         help="set the conf file")
-    add("-t", "--test", dest="test", action="store_true", default=False,
-        help="run the javascript tests")
     add("--profile", dest="profile", action="store_true", default=False,
         help="turn on hotshot profiling")
     add("--dump", dest="dump", action="store_true", default=False,
@@ -136,9 +109,6 @@ if __name__ == '__main__':
 
         runner = unittest.TextTestRunner(verbosity=options.verbosity)
         runner.run(suite)
-
-    if options.test:
-        profile_func(run_tests)
 
     paths = []
     for recurse, path in conf['paths']:
