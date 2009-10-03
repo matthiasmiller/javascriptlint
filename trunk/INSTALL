@@ -9,6 +9,7 @@ BUILDING FROM THE SUBVERSION TRUNK
  on Windows Vista.) Run the commands in that shell.
 
 On all platforms:
- $ make -f Makefile.SpiderMonkey
  $ python setup.py build
 
+To install on Unix:
+ $ sudo python setup.py install
