@@ -52,7 +52,7 @@ def _resolve_paths(path, recurse):
         paths.extend(glob.glob(os.path.join(dir, pattern)))
     return paths
 
-def profile_enabled(func, *args, **kwargs):
+def _profile_enabled(func, *args, **kwargs):
     import tempfile
     import hotshot
     import hotshot.stats
@@ -63,10 +63,10 @@ def profile_enabled(func, *args, **kwargs):
     stats = hotshot.stats.load(filename)
     stats = stats.sort_stats("time")
     stats.print_stats()
-def profile_disabled(func, *args, **kwargs):
+def _profile_disabled(func, *args, **kwargs):
     func(*args, **kwargs)
 
-if __name__ == '__main__':
+def main():
     parser = OptionParser(usage="%prog [options] [files]")
     add = parser.add_option
     add("--conf", dest="conf", metavar="CONF",
@@ -92,9 +92,9 @@ if __name__ == '__main__':
     if options.conf:
         conf.loadfile(options.conf)
 
-    profile_func = profile_disabled
+    profile_func = _profile_disabled
     if options.profile:
-        profile_func = profile_enabled
+        profile_func = _profile_enabled
 
     if options.unittest:
         suite = unittest.TestSuite();
@@ -118,4 +118,8 @@ if __name__ == '__main__':
         sys.exit(3)
     if _lint_results['warnings']:
         sys.exit(1)
+    sys.exit(1)
+
+if __name__ == '__main__':
+    main()
 
