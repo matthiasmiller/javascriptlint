@@ -88,13 +88,23 @@ class Scope:
         self._kids[-1]._parent = self
         self._kids[-1]._node = node
         return self._kids[-1]
-    def add_declaration(self, name, node):
-        self._identifiers[name] = node
+    def add_declaration(self, name, node, type_):
+        assert type_ in ('arg', 'function', 'var'), \
+            'Unrecognized identifier type: %s' % type_
+        self._identifiers[name] = {
+            'node': node,
+            'type': type_
+        }
     def add_reference(self, name, node):
         self._references.append((name, node))
     def get_identifier(self, name):
         if name in self._identifiers:
-            return self._identifiers[name]
+            return self._identifiers[name]['node']
+        else:
+            return None
+    def get_identifier_type(self, name):
+        if name in self._identifiers:
+            return self._identifiers[name]['type']
         else:
             return None
     def get_identifiers(self):
@@ -102,7 +112,7 @@ class Scope:
         return self._identifiers.keys()
     def resolve_identifier(self, name):
         if name in self._identifiers:
-            return self, self._identifiers[name]
+            return self, self._identifiers[name]['node']
         if self._parent:
             return self._parent.resolve_identifier(name)
         return None
@@ -139,8 +149,8 @@ class Scope:
         # Add all identifiers as unreferenced. Children scopes will remove
         # them if they are referenced.  Variables need to be keyed by name
         # instead of node, because function parameters share the same node.
-        for name, node in self._identifiers.items():
-            unreferenced[(self, name)] = node
+        for name, info in self._identifiers.items():
+            unreferenced[(self, name)] = info['node']
 
         # Remove all declared variables from the "unreferenced" set; add all
         # undeclared variables to the "undeclared" list.
@@ -382,7 +392,7 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
         if declare_scope.get_identifier(name):
             report(node, 'redeclared_var', name=name)
         else:
-            declare_scope.add_declaration(name, node)
+            declare_scope.add_declaration(name, node, 'var')
 
 def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
     def report_lint(node, errname, pos=None, **errargs):
@@ -424,7 +434,15 @@ def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_call
     for ref_scope, name, node in unreferenced:
         # Ignore the outer scope.
         if ref_scope != scope:
-            report_lint(node, 'unreferenced_identifier', name=name)
+            type_ = ref_scope.get_identifier_type(name)
+            if type_ == 'arg':
+                report_lint(node, 'unreferenced_argument', name=name)
+            elif type_ == 'function':
+                report_lint(node, 'unreferenced_function', name=name)
+            elif type_ == 'var':
+                report_lint(node, 'unreferenced_variable', name=name)
+            else:
+                assert False, 'Unrecognized identifier type: %s' % type_
 
 def _getreporter(visitor, report):
     def onpush(node):
@@ -441,7 +459,7 @@ def _getreporter(visitor, report):
             report(warning.node, visitor.warning, pos=pos, **warning.errargs)
     return onpush
 
-def _warn_or_declare(scope, name, node, report):
+def _warn_or_declare(scope, name, type_, node, report):
     parent_scope, other = scope.resolve_identifier(name) or (None, None)
     if other and other.kind == tok.FUNCTION and name in other.fn_args:
         report(node, 'var_hides_arg', name=name)
@@ -449,7 +467,7 @@ def _warn_or_declare(scope, name, node, report):
         report(node, 'redeclared_var', name=name)
     else:
         # TODO: Warn when hiding a variable in a parent scope.
-        scope.add_declaration(name, node)
+        scope.add_declaration(name, node, type_)
 
 def _get_scope_checks(scope, report):
     scopes = [scope]
@@ -461,19 +479,19 @@ def _get_scope_checks(scope, report):
             if node.node_index == 0 and node.parent.kind == tok.COLON and node.parent.parent.kind == tok.RC:
                 return # left side of object literal
             if node.parent.kind == tok.VAR:
-                _warn_or_declare(scopes[-1], node.atom, node, report)
+                _warn_or_declare(scopes[-1], node.atom, 'var', node, report)
                 return
             if node.parent.kind == tok.CATCH:
-                scopes[-1].add_declaration(node.atom, node)
+                scopes[-1].add_declaration(node.atom, node, 'var')
             scopes[-1].add_reference(node.atom, node)
 
         @visitation.visit('push', tok.FUNCTION)
         def _push_func(self, node):
             if node.fn_name:
-                _warn_or_declare(scopes[-1], node.fn_name, node, report)
+                _warn_or_declare(scopes[-1], node.fn_name, 'function', node, report)
             self._push_scope(node)
             for var_name in node.fn_args:
-                scopes[-1].add_declaration(var_name, node)
+                scopes[-1].add_declaration(var_name, node, 'arg')
 
         @visitation.visit('push', tok.LEXICALSCOPE, tok.WITH)
         def _push_scope(self, node):

@@ -1,11 +1,13 @@
 /* The tests disable this warning by default becaues of noise. Enable it. */
-/*conf:+unreferenced_identifier*/
+/*conf:+unreferenced_argument*/
+/*conf:+unreferenced_function*/
+/*conf:+unreferenced_variable*/
 
 /* outer-level functions shouldn't warn */
 var unreferenced_global;
 function unreferenced_identifier() {
     /* Test an unreferenced function. */
-    function unreferenced_func() { /*warning:unreferenced_identifier*/
+    function unreferenced_func() { /*warning:unreferenced_function*/
         return true;
     }
     function referenced_func() {
@@ -14,20 +16,20 @@ function unreferenced_identifier() {
     referenced_var();
 
     /* Test an unreferenced parameter. */
-    var z = new function(unreferenced_parm) { /*warning:unreferenced_identifier*/
+    var z = new function(unreferenced_parm) { /*warning:unreferenced_argument*/
     };
     z.prop = 42;
 
     /* Test an unreferenced variable. */
-    var unreferenced_variable = 100; /*warning:unreferenced_identifier*/
+    var unreferenced_variable = 100; /*warning:unreferenced_variable*/
     
     /* An unreferenced duplicate parameter should give one warning. */
-    function func_with_dup(unref_dup_parm, unref_dup_parm) { /*warning:unreferenced_identifier*/ /*warning:duplicate_formal*/
+    function func_with_dup(unref_dup_parm, unref_dup_parm) { /*warning:unreferenced_argument*/ /*warning:duplicate_formal*/
     }
     func_with_dup();
 
     /* An unreferenced duplicate variable should give one warning. */
-    var unref_dup_var; /*warning:unreferenced_identifier*/
+    var unref_dup_var; /*warning:unreferenced_variable*/
     var unref_dup_var; /*warning:redeclared_var*/
 
     /* Test a try/catch. The error doesn't need to be referenced. */
@@ -51,7 +53,7 @@ function unreferenced_identifier() {
     }
 
     /* Test assignments. */
-    var assigned_but_unref; /*warning:unreferenced_identifier*/
+    var assigned_but_unref; /*warning:unreferenced_variable*/
     assigned_but_unref = 42;
 
     function callback() {
@@ -60,9 +62,9 @@ function unreferenced_identifier() {
     (assigned_but_ref = callback)();
 
     /* Test increment and decrement. */
-    var unref_inc; /*warning:unreferenced_identifier*/
+    var unref_inc; /*warning:unreferenced_variable*/
     unref_inc++;
-    var unref_dec; /*warning:unreferenced_identifier*/
+    var unref_dec; /*warning:unreferenced_variable*/
     unref_dec--;
 
     var tmp;
@@ -73,7 +75,7 @@ function unreferenced_identifier() {
     tmp = -tmp;
 
     /* Test named functions as references. */
-    var fn = function ref_func() { return 42; }; /*warning:unreferenced_identifier*/
+    var fn = function ref_func() { return 42; }; /*warning:unreferenced_function*/
     fn();
 
     /* Test nested scopes. */
