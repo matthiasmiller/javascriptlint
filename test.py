@@ -4,8 +4,8 @@ import os
 import re
 import sys
 
-import pyjsl.conf
-import pyjsl.lint
+import javascriptlint.pyjsl.conf
+import javascriptlint.pyjsl.lint
 
 _DEFAULT_CONF = """
 # This warning triggers a lot of warnings in many of the tests, so only enable
@@ -19,7 +19,7 @@ class TestError(Exception):
 def _get_conf(script):
     regexp = re.compile(r"/\*conf:([^*]*)\*/")
     text = '\n'.join(regexp.findall(script))
-    conf = pyjsl.conf.Conf()
+    conf = javascriptlint.pyjsl.conf.Conf()
     conf.loadtext(_DEFAULT_CONF)
     conf.loadtext(text)
     return conf
@@ -59,7 +59,7 @@ def _testfile(path):
         else:
             unexpected_warnings.append(warning)
 
-    pyjsl.lint.lint_files([path], lint_error, conf=conf)
+    javascriptlint.pyjsl.lint.lint_files([path], lint_error, conf=conf)
 
     errors = []
     if expected_warnings:
