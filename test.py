@@ -10,7 +10,9 @@ import javascriptlint.lint
 _DEFAULT_CONF = """
 # This warning triggers a lot of warnings in many of the tests, so only enable
 # it when specifically testing it.
--unreferenced_identifier
+-unreferenced_argument
+-unreferenced_function
+-unreferenced_variable
 """
 
 class TestError(Exception):
