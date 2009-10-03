@@ -10,24 +10,26 @@ if __name__ == '__main__':
     else:
         library = 'js'
     pyspidermonkey = Extension(
-            'pyspidermonkey',
+            'javascriptlint.pyspidermonkey',
             include_dirs = ['spidermonkey/src', 'build/spidermonkey'],
             library_dirs = ['build/spidermonkey'],
             libraries = [library],
             sources = [
-                'pyspidermonkey/pyspidermonkey.c',
-                'pyspidermonkey/nodepos.c'
+                'javascriptlint/pyspidermonkey/pyspidermonkey.c',
+                'javascriptlint/pyspidermonkey/nodepos.c'
             ]
         )
     args = {}
     args.update(
-        name = 'pyjsl',
+        name = 'javascriptlint',
         version = '1.0',
         author = 'Matthias Miller',
         author_email = 'info@javascriptlint.com',
         url = 'http://www.javascriptlint.com/',
         description = 'JavaScript Lint',
-        ext_modules = [pyspidermonkey]
+        ext_modules = [pyspidermonkey],
+        packages = ['javascriptlint', 'javascriptlint.pyjsl'],
+        scripts = ['jsl']
     )
     try:
         import py2exe
