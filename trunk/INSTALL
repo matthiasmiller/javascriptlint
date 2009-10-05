@@ -3,10 +3,15 @@ BUILDING FROM THE SUBVERSION TRUNK
 * Windows Prequisites:
  * Visual Studio 2003
  * Python
+ * py2exe
  * MozillaBuild (http://developer.mozilla.org/en/docs/Windows_Build_Prerequisites)
 
  Launch the MozillaBuild 7.1 batch file. (You may have to run this as an Administrator
  on Windows Vista.) Run the commands in that shell.
+
+ If you don't have a copy of Visual Studio 2003, you can download the Python
+ source code and compile it yourself. Python C extensions must be built with
+ the same compiler as the Python interpreter.
 
 On all platforms:
  $ python setup.py build
