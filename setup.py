@@ -11,24 +11,26 @@ class _MakefileError(Exception):
     pass
 
 def _runmakefiles(distutils_dir, build_opt=1, args=[]):
+    args = ['BUILD_OPT=%i' % build_opt]
+    if distutils_dir:
+        args.append('DISTUTILS_DIR=%s' % distutils_dir)
+
     # First build SpiderMonkey.
     ret = subprocess.call(['make', '-f', 'Makefile.ref', '-C',
-                           'spidermonkey/src', 'BUILD_OPT=%i' % build_opt] + \
-                           args)
+                           'spidermonkey/src'] + args)
     if ret != 0:
         raise _MakefileError, 'Error running make.'
 
     # Then copy the files to the build directory.
-    env = dict(os.environ)
-    if distutils_dir:
-        env['DISTUTILS_DIR'] = distutils_dir
-    ret = subprocess.call(['make', '-f', 'Makefile.SpiderMonkey',
-                           'BUILD_OPT=%i' % build_opt] + args, env=env)
+    ret = subprocess.call(['make', '-f', 'Makefile.SpiderMonkey'] + args)
     if ret != 0:
         raise _MakefileError, 'Error running make.'
 
 class _MyBuild(distutils.command.build.build):
     def run(self):
+        # py2exe is calling reinitialize_command without finalizing.
+        self.ensure_finalized()
+
         _runmakefiles(self.build_platlib)
         distutils.command.build.build.run(self)
 
@@ -75,7 +77,7 @@ if __name__ == '__main__':
         pass
     else:
         args.update(
-            console = ['jsl.py'],
+            console = ['jsl'],
             options = {
                 'py2exe': {
                     'excludes': ['javascriptlint.spidermonkey_'],
