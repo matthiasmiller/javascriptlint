@@ -63,7 +63,11 @@ class _Handler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
         path = _resolve_url(self.path)
         if path:
-            self._send_response(*_transform_file(path))
+            try:
+                self._send_response(*_transform_file(path))
+            except Exception:
+                self.send_error(500, "TRACEBACK")
+                raise
         else:
             self.send_error(404, "File not found")
 
