@@ -48,13 +48,17 @@ def _transform_file(path):
     elif path.endswith('.png'):
         return 'image/png', source
     elif path.endswith('.htm') or path.endswith('.php'):
-        body = markdown.markdown(source)
-        keywords = re.findall(r'^@(\w+)=(.*)$', source, re.MULTILINE)
-        # TODO: encode
-        keywords = dict(keywords)
-        keywords['body'] = body
-        keywords['nav'] = _get_nav(path)
-        page = open(TEMPLATE_PATH).read() % keywords
+        settings = dict(re.findall(r'^@(\w+)=(.*)$', source, re.MULTILINE))
+
+        page = markdown.markdown(source)
+        if 'template' in settings:
+            # TODO: encode keywords
+            keywords = dict(settings)
+            del keywords['template']
+            keywords['body'] = page
+            keywords['nav'] = _get_nav(path)
+            template_path = os.path.join(DOC_ROOT, settings['template'])
+            page = open(template_path).read() % keywords
         return 'text/html', page
     else:
         raise ValueError, 'Invalid file type: %s' % path
