@@ -17,6 +17,6 @@ The warning against duplicate case statements now correctly handles case stateme
 
 This release fixes a bug that caused a "Bus error" on Mac OS X and a segmentation fault on Solaris 5.9; JavaScript Lint has now been compiled and run on those operating systems. If Mac users are interested in precompiled binaries, I will consider making them available for download on the website.
 
-Available from the [download page](http://www.javascriptlint.com/download.htm).
+Available from the [download page](/download.htm).
 
 

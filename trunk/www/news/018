@@ -12,6 +12,6 @@ When referencing an external script, the _script_ start and end tags no longer n
 
 JavaScript files using "Unicode (UTF-8 with signature) - Codepage 65001" encoding, such as those created in Microsoft Visual Studio, no longer generate errors.
 
-Available from the [download page](http://www.javascriptlint.com/download.htm).
+Available from the [download page](/download.htm).
 
 

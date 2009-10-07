@@ -8,6 +8,6 @@ _Tue, 03 Jan 2006 17:31:25 +0000_
 
 This release fixes a bug with the "undeclared identifier" warnings when using the import control comment.
 
-Available from the [download page](http://www.javascriptlint.com/download.htm).
+Available from the [download page](/download.htm).
 
 
