@@ -37,6 +37,6 @@ __Bug Fixes:__
 
 * Scripts with circular _import_ directives no longer incorrectly report undeclared identifiers.
 
-Available from the [download page](http://www.javascriptlint.com/download.htm).
+Available from the [download page](/download.htm).
 
 
