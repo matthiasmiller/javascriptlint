@@ -3,7 +3,7 @@
 @title=News
 -->
 
-## [JavaScript Lint 0.1j Released](http://www.javascriptlint.com/news/010)
+## [JavaScript Lint 0.1j Released](__BASENAME__)
 _Mon, 05 Dec 2005 20:19:35 +0000_
 
 This release fixes a bug in the "duplicate case" warning for numbers. Certain numbers were incorrectly reported as duplicates.  (This bug is more likely to affect JavaScript programmers using big-endian processors.)

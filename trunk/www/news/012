@@ -3,7 +3,7 @@
 @title=News
 -->
 
-## [JavaScript Lint 0.1l Released](http://www.javascriptlint.com/news/012)
+## [JavaScript Lint 0.1l Released](__BASENAME__)
 _Mon, 02 Jan 2006 22:05:25 +0000_
 
 This release includes a new warning for useless comparisons (for example, x == x).

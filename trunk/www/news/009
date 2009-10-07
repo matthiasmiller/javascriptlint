@@ -3,7 +3,7 @@
 @title=News
 -->
 
-## [JavaScript Lint 0.1i Released](http://www.javascriptlint.com/news/009)
+## [JavaScript Lint 0.1i Released](__BASENAME__)
 _Wed, 16 Nov 2005 14:28:54 +0000_
 
 This release has a more specific warning for _else_ statements that may be intended for one of multiple _if_ statements (it previously warned that nested statements should use curly braces to resolve ambiguity):
