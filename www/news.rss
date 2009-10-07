@@ -1,0 +1,8 @@
+<!--
+@output=rss
+@title=JavaScript Lint Project News
+@link=http://www.javascriptlint.com/
+@desc=JavaScript Lint Project News
+-->
+
+<!--@include /news/-->

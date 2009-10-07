@@ -1,0 +1,13 @@
+<!--
+@template=__template__
+@title=News
+-->
+
+## [JavaScript Lint 0.2.1 Released](http://www.javascriptlint.com/news/015)
+_Mon, 09 Jan 2006 14:18:24 +0000_
+
+This release includes a configuration setting to completely disable legacy control comments.
+
+Available from the [download page](http://www.javascriptlint.com/download.htm).
+
+
