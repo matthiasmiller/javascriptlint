@@ -62,7 +62,7 @@ def _get_nav(path):
 def _remove_comments(source):
     return re.sub('<!--[^>]*-->', '', source)
 
-def _gen_rss(source, title, link, desc):
+def _gen_rss(source, title, link, desc, linkbase):
     def removeblanktextnodes(node):
         for i in range(len(node.childNodes)-1, -1, -1):
             child = node.childNodes[i]
@@ -117,8 +117,16 @@ def _gen_rss(source, title, link, desc):
                                   'single text node.'
             heading = titlenode.value.strip()
 
+            # Combine the href with the linkbase.
             assert 'href' in link.attributes
             href = link.attribute_values['href']
+            if '/' in href:
+                raise ValueError, 'The heading link should not reference ' + \
+                                  'directories: %s' % href
+            if not linkbase.endswith('/'):
+                raise ValueError, 'The @linkbase must be a directory: %s' % \
+                                  linkbase
+            href = linkbase + href
 
             if href in guids:
                 raise ValueError, "Duplicate link: %s" % href
@@ -183,6 +191,7 @@ def _preprocess(path):
     # The settings defined in the outer file will rule.
     settings = dict(re.findall(r'^@(\w+)=(.*)$', source, re.MULTILINE))
     source = _remove_comments(source)
+    source = source.replace('__BASENAME__', os.path.basename(path))
     return settings, source
 
 def _transform_file(path):
@@ -197,7 +206,8 @@ def _transform_file(path):
         settings, source = _preprocess(path)
         return 'text/xml', _gen_rss(source, settings.get('title'),
                                     settings.get('link'),
-                                    settings.get('desc'))
+                                    settings.get('desc'),
+                                    settings.get('linkbase'))
     elif path.endswith('.htm') or path.endswith('.php') or \
          not '.' in os.path.basename(path):
         settings, source = _preprocess(path)

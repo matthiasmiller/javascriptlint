@@ -3,7 +3,7 @@
 @title=News
 -->
 
-## [JavaScript Lint 0.2.5 Released](http://www.javascriptlint.com/news/019)
+## [JavaScript Lint 0.2.5 Released](__BASENAME__)
 _Sat, 08 Apr 2006 04:29:38 +0000_
 
 To facilitate integration into other applications, the output format can now be passed on the command line and the results can be encoded. The source package contains source files that can be used to easily [integrate JavaScript Lint into a Windows program](http://www.javascriptlint.com/docs/running_from_your_windows_program.htm).

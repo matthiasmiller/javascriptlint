@@ -3,7 +3,7 @@
 @title=News
 -->
 
-## [JavaScript Lint 0.2.4 Released](http://www.javascriptlint.com/news/018)
+## [JavaScript Lint 0.2.4 Released](__BASENAME__)
 _Sat, 11 Mar 2006 02:55:51 +0000_
 
 JavaScript within HTML files can now contain `</script>` in string literals and comments.
