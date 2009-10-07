@@ -128,7 +128,7 @@ def _gen_rss(source, title, link, desc):
             channel.appendChild(item)
             item.appendChild(doc.createElement("link", href))
             item.appendChild(doc.createElement("title", heading))
-            item.appendChild(doc.createElement("guid", guid))
+            item.appendChild(doc.createElement("guid", href))
             item_desc = None
 
         elif child.nodeName in ["p", "ul", "blockquote"] :
@@ -159,9 +159,15 @@ def _gen_rss(source, title, link, desc):
 
 def _preprocess(path):
     def _include(match):
+        # Disallow changing directories because of how links, etc
+        # will resolve.
+        url = match.group(1).strip()
+        if '/' in url:
+            raise ValueError, 'Inclusions cannot cross directories'
+
         # When including a file, update global settings and replace
         # with contents.
-        includepath = _resolve_url(match.group(1).strip(), path)
+        includepath = _resolve_url(url, path)
         if not includepath:
             raise ValueError, 'Unmatched URL: %s' % match.group(1)
         settings, contents = _preprocess(includepath)
