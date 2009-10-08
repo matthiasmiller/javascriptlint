@@ -9,6 +9,7 @@ import sys
 import markdown
 
 DOC_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'www')
+BUILD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'build', 'www')
 TEMPLATE_PATH = os.path.join(DOC_ROOT, '__template__')
 
 NAV = [
@@ -249,11 +250,39 @@ def runserver():
     httpd = BaseHTTPServer.HTTPServer(server_address, _Handler)
     httpd.serve_forever()
 
+def build():
+    def findfiles(searchroot):
+        """ Returns relative paths in root.
+        """
+        for root, dirs, files in os.walk(searchroot):
+            if '.svn' in dirs:
+                dirs.remove('.svn')
+            for file in files:
+                abspath = os.path.join(root, file)
+                assert abspath.startswith(searchroot + os.sep)
+                relpath = abspath[len(searchroot + os.sep):]
+                yield relpath
+
+    for relpath in findfiles(DOC_ROOT):
+        sourcepath = os.path.join(DOC_ROOT, relpath)
+        destpath = os.path.join(BUILD_DIR, relpath)
+        if not os.path.isdir(os.path.dirname(destpath)):
+            os.makedirs(os.path.dirname(destpath))
+
+        content_type, contents = _transform_file(sourcepath)
+        outfile = open(destpath, 'wb')
+        try:
+            outfile.write(contents)
+        finally:
+            outfile.close()
+
 def main(action=''):
     if action == 'server':
         runserver()
         return
-    # TODO: Implement 'build'.
+    if action == 'build':
+        build()
+        return
     print >>sys.stderr, """\
 Usage: www.py [server|build]
 
