@@ -267,6 +267,8 @@ def _transform_file(host, path):
         return 'image/gif', source
     elif path.endswith('.png'):
         return 'image/png', source
+    elif path.endswith('.inc'):
+        return 'text/plain', source
     elif path.endswith('.rss'):
         settings, source = _preprocess(path)
         return 'text/xml', _gen_rss(host, path, source,
