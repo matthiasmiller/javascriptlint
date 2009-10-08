@@ -3,6 +3,8 @@
 @title=The Online Lint
 -->
 
+<?php require('_lint_front.inc') ?>
+
 Online Lint
 ===========
 
@@ -14,10 +16,12 @@ If you encounter any problems, please report them to Matthias Miller at Info&lt;
 <form method="POST" action="">
 <p>Paste your JavaScript, HTML, or URL into the box below:</p>
 <p>
-  <textarea name="script" rows="15" cols="75" style="width: 100%"></textarea>
+  <textarea name="script" rows="15" cols="75" style="width: 100%"><?php outputscript(); ?></textarea>
 </p>
 <p>
   <input type="submit" value="Lint"/>
-
 </p>
+
+<?php outputlint(); ?>
+
 </form>
