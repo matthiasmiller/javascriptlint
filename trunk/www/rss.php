@@ -1,3 +1,3 @@
 <?php
-// Header('Location: /news/index.rss');
+Header('Location: /news/index.rss');
 ?>
