@@ -10,10 +10,12 @@ import sys
 class _MakefileError(Exception):
     pass
 
-def _runmakefiles(distutils_dir, build_opt=1, args=[]):
+def _runmakefiles(distutils_dir, build_opt=1, target=None):
     args = ['BUILD_OPT=%i' % build_opt]
     if distutils_dir:
         args.append('DISTUTILS_DIR=%s' % distutils_dir)
+    if target:
+        args.append(target)
 
     # First build SpiderMonkey.
     ret = subprocess.call(['make', '-f', 'Makefile.ref', '-C',
@@ -36,7 +38,7 @@ class _MyBuild(distutils.command.build.build):
 
 class _MyClean(distutils.command.clean.clean):
     def run(self):
-        _runmakefiles(None, args=['clean'])
+        _runmakefiles(None, target='clean')
         distutils.command.clean.clean.run(self)
 
 if __name__ == '__main__':
