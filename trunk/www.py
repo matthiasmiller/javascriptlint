@@ -2,7 +2,6 @@
 # vim: ts=4 sw=4 expandtab
 import BaseHTTPServer
 import datetime
-import md5
 import re
 import os
 import sys
@@ -22,18 +21,68 @@ NAV = [
     ('/contact_support.htm', 'Contact'),
 ]
 
-def _markdown2doc(source):
+# RSS should use absolute URLs, but enable it for everything. Also
+# use this post-processor to validate links.
+class _URLPostProcessor(markdown.Postprocessor):
+    def __init__(self, host, filepath):
+        self._host = host
+        self._filepath = filepath
+
+    def run(self, doc):
+        self._resolvelinks(doc.documentElement)
+        return doc
+
+    def _resolvelinks(self, node):
+        if node.type != "element":
+            return
+        for child in node.childNodes:
+            self._resolvelinks(child)
+        linkattrs = {
+            'a': 'href',
+            'script': 'src',
+            'link': 'href',
+            'img': 'src',
+        }
+        if node.nodeName in linkattrs:
+            attrname = linkattrs[node.nodeName]
+            if not attrname in node.attribute_values:
+                return
+
+            attrvalue = node.attribute_values[attrname]
+            if not attrvalue.startswith('http://'):
+                if not attrvalue.startswith('/'):
+                    targetpath = _get_path_for_url(attrvalue, self._filepath)
+                    if not targetpath:
+                        raise ValueError, 'Could not resolve URL %s' % attrvalue
+
+                    # Get the folder of the parent path.
+                    parenturl = _get_relurl_for_filepath(self._filepath)
+                    assert parenturl.startswith('/')
+                    parenturl = parenturl.rpartition('/')[0]
+                    attrvalue = parenturl + '/' + attrvalue
+                    assert _get_path_for_url(attrvalue, None) == targetpath
+                attrvalue = 'http://%s%s' % (self._host, attrvalue)
+                node.attribute_values[attrname] = attrvalue
+
+def _markdown2doc(host, filepath, source):
     class _PostProcessor(markdown.Postprocessor):
         def run(self, doc):
             self.doc = doc
             return doc
+    urlprocessor = _URLPostProcessor(host, filepath)
     postprocessor = _PostProcessor()
     md = markdown.Markdown()
+    md.postprocessors.append(urlprocessor)
     md.postprocessors.append(postprocessor)
     md.convert(source)
     return postprocessor.doc
 
-def _resolve_url(url, parentpath):
+def _get_relurl_for_filepath(filepath):
+    assert (filepath + os.sep).startswith(DOC_ROOT + os.sep)
+    relpath = filepath[len(DOC_ROOT + os.sep):]
+    return '/' + relpath.replace(os.sep, '/')
+
+def _get_path_for_url(url, parentpath):
     root = DOC_ROOT
     if not url.startswith('/'):
         if parentpath:
@@ -54,7 +103,7 @@ def _resolve_url(url, parentpath):
 def _get_nav(path):
     nav = []
     for url, name in NAV:
-        navpath = _resolve_url(url, None)
+        navpath = _get_path_for_url(url, None)
         if navpath and navpath == path:
             nav.append('* <a class="active">%s</a>' % name)
         else:
@@ -64,7 +113,7 @@ def _get_nav(path):
 def _remove_comments(source):
     return re.sub('<!--[^>]*-->', '', source)
 
-def _gen_rss(source, title, link, desc, linkbase):
+def _gen_rss(host, path, source, title, link, desc, linkbase):
     def removeblanktextnodes(node):
         for i in range(len(node.childNodes)-1, -1, -1):
             child = node.childNodes[i]
@@ -74,13 +123,14 @@ def _gen_rss(source, title, link, desc, linkbase):
             else:
                 removeblanktextnodes(child)
     text = _remove_comments(source)
-    doc = _markdown2doc(text)
+    doc = _markdown2doc(host, path, text)
 
     oldDocElement = doc.documentElement
     removeblanktextnodes(oldDocElement)
 
     rss = doc.createElement("rss")
     rss.setAttribute('version', '2.0')
+    rss.setAttribute('xmlns:atom', 'http://www.w3.org/2005/Atom')
     doc.appendChild(rss)
 
     channel = doc.createElement("channel")
@@ -122,9 +172,6 @@ def _gen_rss(source, title, link, desc, linkbase):
             # Combine the href with the linkbase.
             assert 'href' in link.attributes
             href = link.attribute_values['href']
-            if '/' in href:
-                raise ValueError, 'The heading link should not reference ' + \
-                                  'directories: %s' % href
             if not linkbase.endswith('/'):
                 raise ValueError, 'The @linkbase must be a directory: %s' % \
                                   linkbase
@@ -184,7 +231,7 @@ def _preprocess(path):
 
         # When including a file, update global settings and replace
         # with contents.
-        includepath = _resolve_url(url, path)
+        includepath = _get_path_for_url(url, path)
         if not includepath:
             raise ValueError, 'Unmatched URL: %s' % match.group(1)
         settings, contents = _preprocess(includepath)
@@ -203,7 +250,16 @@ def _preprocess(path):
     source = source.replace('__BASENAME__', os.path.basename(path))
     return settings, source
 
-def _transform_file(path):
+def _transform_markdown(host, path):
+    settings, source = _preprocess(path)
+    page = markdown.markdown(source)
+
+    postprocessor = _URLPostProcessor(host, path)
+    md = markdown.Markdown()
+    md.postprocessors.append(postprocessor)
+    return settings, md.convert(source)
+
+def _transform_file(host, path):
     source = open(path).read()
     if path.endswith('.css'):
         return 'text/css', source
@@ -213,14 +269,14 @@ def _transform_file(path):
         return 'image/png', source
     elif path.endswith('.rss'):
         settings, source = _preprocess(path)
-        return 'text/xml', _gen_rss(source, settings.get('title'),
+        return 'text/xml', _gen_rss(host, path, source,
+                                    settings.get('title'),
                                     settings.get('link'),
                                     settings.get('desc'),
                                     settings.get('linkbase'))
     elif path.endswith('.htm') or path.endswith('.php') or \
          not '.' in os.path.basename(path):
-        settings, source = _preprocess(path)
-        page = markdown.markdown(source)
+        settings, page = _transform_markdown(host, path)
         if 'template' in settings:
             # TODO: encode keywords
             keywords = dict(settings)
@@ -235,10 +291,12 @@ def _transform_file(path):
 
 class _Handler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
-        path = _resolve_url(self.path, None)
+        path = _get_path_for_url(self.path, None)
         if path:
+            host = '%s:%s' % (self.server.server_name, \
+                              self.server.server_port)
             try:
-                self._send_response(*_transform_file(path))
+                self._send_response(*_transform_file(host, path))
             except Exception:
                 self.send_error(500, "TRACEBACK")
                 raise
@@ -276,8 +334,8 @@ def build(host):
                 relpath = abspath[len(searchroot + os.sep):]
                 yield relpath
 
-    if host:
-        raise ValueError, 'Host is not yet implemented.'
+    if not host or '/' in host:
+        raise ValueError, 'Host must be sub.domain.com'
 
     for relpath in findfiles(DOC_ROOT):
         sourcepath = os.path.join(DOC_ROOT, relpath)
@@ -285,7 +343,7 @@ def build(host):
         if not os.path.isdir(os.path.dirname(destpath)):
             os.makedirs(os.path.dirname(destpath))
 
-        content_type, contents = _transform_file(sourcepath)
+        content_type, contents = _transform_file(host, sourcepath)
         outfile = open(destpath, 'wb')
         try:
             outfile.write(contents)
@@ -297,7 +355,7 @@ def main(action='', host=''):
         runserver(host)
         return
     if action == 'build':
-        build()
+        build(host)
         return
     print >>sys.stderr, """\
 Usage: www.py [server|build] <host>
