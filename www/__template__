@@ -2,6 +2,7 @@
 <head>
 	<title>%(title)s</title>
 	<link rel="stylesheet" type="text/css" href="/static/global.css" />
+	<link rel="alternate" type="text/xml" title="RSS 2.0" href="/news/index.rss" />
 </head>
 <body>
 	<div id="title">
