@@ -260,13 +260,15 @@ def _transform_markdown(host, path):
     return settings, md.convert(source)
 
 def _transform_file(host, path):
-    source = open(path).read()
+    source = open(path, 'rb').read()
     if path.endswith('.css'):
         return 'text/css', source
     elif path.endswith('.gif'):
         return 'image/gif', source
     elif path.endswith('.png'):
         return 'image/png', source
+    elif path.endswith('.ico'):
+        return 'image/x-icon', source
     elif path.endswith('.inc'):
         return 'text/plain', source
     elif path.endswith('.rss'):
