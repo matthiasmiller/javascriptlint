@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # vim: ts=4 sw=4 expandtab
 import BaseHTTPServer
+import datetime
 import md5
 import re
 import os
@@ -92,7 +93,7 @@ def _gen_rss(source, title, link, desc, linkbase):
         raise ValueError, 'Missing @desc= setting.'
     channel.appendChild(doc.createElement('title', textNode=title))
     channel.appendChild(doc.createElement('link', textNode=link))
-    channel.appendChild(doc.createElement('desc', textNode=desc))
+    channel.appendChild(doc.createElement('description', textNode=desc))
 
     guids = []
 
@@ -152,8 +153,15 @@ def _gen_rss(source, title, link, desc, linkbase):
                 if not emchild or emchild.type != 'text':
                     raise ValueError, "The first paragraph's em must " + \
                                       "contain only text."
+                pubdate = emchild.value
 
-                # TODO: Validate canonical date format.
+                format = "%a, %d %b %Y %H:%M:%S +0000"
+                dateobj = datetime.datetime.strptime(pubdate, format)
+                normalized = dateobj.strftime(format)
+                if normalized != pubdate:
+                    raise ValueError, 'Encountered date %s but expected %s' % \
+                                      (pubdate, normalized)
+
 
                 item.appendChild(doc.createElement('pubDate', emchild.value))
                 item_desc = doc.createElement("description")
@@ -245,12 +253,17 @@ class _Handler(BaseHTTPServer.BaseHTTPRequestHandler):
         self.wfile.write(content)
 
 
-def runserver():
-    server_address = ('', 8000)
-    httpd = BaseHTTPServer.HTTPServer(server_address, _Handler)
+def runserver(host):
+    if host:
+        addr, _, port = host.partition(':')
+    else:
+        addr = ''
+        port = 8000
+
+    httpd = BaseHTTPServer.HTTPServer((addr, port), _Handler)
     httpd.serve_forever()
 
-def build():
+def build(host):
     def findfiles(searchroot):
         """ Returns relative paths in root.
         """
@@ -262,6 +275,9 @@ def build():
                 assert abspath.startswith(searchroot + os.sep)
                 relpath = abspath[len(searchroot + os.sep):]
                 yield relpath
+
+    if host:
+        raise ValueError, 'Host is not yet implemented.'
 
     for relpath in findfiles(DOC_ROOT):
         sourcepath = os.path.join(DOC_ROOT, relpath)
@@ -276,15 +292,15 @@ def build():
         finally:
             outfile.close()
 
-def main(action=''):
+def main(action='', host=''):
     if action == 'server':
-        runserver()
+        runserver(host)
         return
     if action == 'build':
         build()
         return
     print >>sys.stderr, """\
-Usage: www.py [server|build]
+Usage: www.py [server|build] <host>
 
 server     runs a test server on localhost
 build      generates static HTML files from the markup

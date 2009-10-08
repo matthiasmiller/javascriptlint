@@ -4,7 +4,7 @@
 -->
 
 ## [JavaScript Lint 0.1e Released](__BASENAME__)
-_Tue, 31 Aug 2005 02:40:49 +0000_
+_Wed, 31 Aug 2005 02:40:49 +0000_
 
 This release fixes a crash triggered by the following statement: _for(i = 0; i < 5; )_. (The Linux binary is not currently available for this release.)
 
