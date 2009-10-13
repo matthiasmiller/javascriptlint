@@ -17,9 +17,10 @@ def _runmakefiles(distutils_dir, build_opt=1, target=None):
     if target:
         args.append(target)
 
-    # First build SpiderMonkey.
+    # First build SpiderMonkey. Force it to link statically against the CRT to
+    # make deployment easier.
     ret = subprocess.call(['make', '-f', 'Makefile.ref', '-C',
-                           'spidermonkey/src'] + args)
+                           'spidermonkey/src', 'XCFLAGS=-MT'] + args)
     if ret != 0:
         raise _MakefileError, 'Error running make.'
 
