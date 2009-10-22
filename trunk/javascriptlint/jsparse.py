@@ -174,7 +174,7 @@ def findpossiblecomments(script, node_positions):
         start_pos = node_positions.from_offset(start_offset)
         end_pos = node_positions.from_offset(end_offset)
         kwargs = {
-            'type': 'COMMENT',
+            'kind': 'COMMENT',
             'atom': comment_text,
             'opcode': opcode,
             '_start_line': start_pos.line,
