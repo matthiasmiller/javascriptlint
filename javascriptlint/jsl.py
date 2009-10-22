@@ -104,7 +104,7 @@ def main():
 
     if options.unittest:
         suite = unittest.TestSuite();
-        for module in [conf, htmlparse, jsparse, util]:
+        for module in [conf, htmlparse, jsparse, lint, util]:
             suite.addTest(unittest.findTestCases(module))
 
         runner = unittest.TextTestRunner(verbosity=options.verbosity)

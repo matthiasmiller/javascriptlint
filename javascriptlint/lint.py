@@ -8,6 +8,7 @@ import htmlparse
 import jsparse
 import visitation
 import warnings
+import unittest
 import util
 
 from spidermonkey import tok, op
@@ -213,6 +214,45 @@ class _Script:
             if global_:
                 return global_
 
+def _findhtmlscripts(contents):
+    starttag = None
+    nodepos = jsparse.NodePositions(contents)
+    for tag in htmlparse.findscripttags(contents):
+        if tag['type'] == 'start':
+            # Ignore nested start tags.
+            if not starttag:
+                starttag = tag
+                src = tag['attr'].get('src')
+                if src:
+                    yield {
+                        'type': 'external',
+                        'src': src
+                    }
+        elif tag['type'] == 'end':
+            if not starttag:
+                continue
+
+            # htmlparse returns 1-based line numbers. Calculate the
+            # position of the script's contents.
+            tagpos = jsparse.NodePos(starttag['lineno']-1, starttag['offset'])
+            tagoffset = nodepos.to_offset(tagpos)
+            startoffset = tagoffset + starttag['len']
+            startpos = nodepos.from_offset(startoffset)
+            endpos = jsparse.NodePos(tag['lineno']-1, tag['offset'])
+            endoffset = nodepos.to_offset(endpos)
+            script = contents[startoffset:endoffset]
+
+            if jsparse.is_compilable_unit(script):
+                starttag = None
+                if script.strip():
+                    yield {
+                        'type': 'inline',
+                        'pos': startpos,
+                        'contents': script,
+                    }
+        else:
+            assert False, 'Invalid internal tag type %s' % tag['type']
+
 def lint_files(paths, lint_error, conf=conf.Conf()):
     def lint_file(path, kind):
         def import_script(import_path):
@@ -235,12 +275,15 @@ def lint_files(paths, lint_error, conf=conf.Conf()):
         if kind == 'js':
             script_parts.append((None, contents))
         elif kind == 'html':
-            for script in htmlparse.findscripts(contents):
-                if script['src']:
+            for script in _findhtmlscripts(contents):
+                if script['type'] == 'external':
                     other = import_script(script['src'])
                     lint_cache[normpath].importscript(other)
-                if script['script'].strip():
-                    script_parts.append((script['startpos'], script['script']))
+                elif script['type'] == 'inline':
+                    script_parts.append((script['pos'], script['contents']))
+                else:
+                    assert False, 'Invalid internal script type %s' % \
+                                  script['type']
         else:
             assert False, 'Unsupported file kind: %s' % kind
 
@@ -521,3 +564,24 @@ def _lint_node(node, visitors):
                 visitor(node)
 
 
+class TestLint(unittest.TestCase):
+    def testFindScript(self):
+        html = """
+<html><body>
+<script src=test.js></script>
+hi&amp;b
+a<script><!--
+var s = '<script></script>';
+--></script>
+ok&amp;
+..</script>
+ok&amp;
+</body>
+</html>
+"""
+        scripts = [(x.get('src'), x.get('contents'))
+                   for x in _findhtmlscripts(html)]
+        self.assertEquals(scripts, [
+            ('test.js', None),
+            (None, "<!--\nvar s = '<script></script>';\n-->")
+        ])
