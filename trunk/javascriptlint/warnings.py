@@ -414,7 +414,16 @@ def useless_assign(node):
 def unreachable_code(node):
     if node.parent.kind == tok.LC:
         for sibling in node.parent.kids[node.node_index+1:]:
-            if not sibling.kind in (tok.VAR, tok.FUNCTION):
+            if sibling.kind == tok.VAR:
+                # Look for a variable assignment
+                for variable in sibling.kids:
+                    value, = variable.kids
+                    if value:
+                        raise LintWarning, value
+            elif sibling.kind == tok.FUNCTION:
+                # Functions are always declared.
+                pass
+            else:
                 raise LintWarning, sibling
 
 @lookfor(tok.FOR)
