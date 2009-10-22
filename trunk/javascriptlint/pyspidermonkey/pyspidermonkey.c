@@ -382,6 +382,36 @@ fail:
     return NULL;
 }
 
+/* Returns NULL on success. Otherwise, it returns an error.
+ * If the error is blank, an exception will be set.
+ */
+static const char* create_jscontext(void* ctx_data,
+                                    JSRuntime** runtime, JSContext** context,
+                                    JSObject** global)
+{
+    *runtime = JS_NewRuntime(8L * 1024L * 1024L);
+    if (*runtime == NULL)
+        return"cannot create runtime";
+
+    *context = JS_NewContext(*runtime, 8192);
+    if (*context == NULL)
+        return "cannot create context";
+
+    JS_SetErrorReporter(*context, error_reporter);
+    JS_SetContextPrivate(*context, ctx_data);
+    JS_ToggleOptions(*context, JSOPTION_STRICT);
+
+    *global = JS_NewObject(*context, NULL, NULL, NULL);
+    if (*global == NULL)
+        return "cannot create global object";
+
+    if (!JS_InitStandardClasses(*context, *global))
+        return "cannot initialize standard classes";
+
+    return NULL;
+}
+
+
 static PyObject*
 module_parse(PyObject *self, PyObject *args) {
     struct {
@@ -419,35 +449,13 @@ module_parse(PyObject *self, PyObject *args) {
         return NULL;
     }
 
-    m.runtime = JS_NewRuntime(8L * 1024L * 1024L);
-    if (m.runtime == NULL) {
-        error = "cannot create runtime";
+    error = create_jscontext(&m.ctx_data, &m.runtime, &m.context, &m.global);
+    if (error)
         goto cleanup;
-    }
-
-    m.context = JS_NewContext(m.runtime, 8192);
-    if (m.context == NULL) {
-        error = "cannot create context";
-        goto cleanup;
-    }
-    JS_SetErrorReporter(m.context, error_reporter);
-    JS_SetContextPrivate(m.context, &m.ctx_data);
-    JS_ToggleOptions(m.context, JSOPTION_STRICT);
 
     m.contents = JS_NewStringCopyZ(m.context, m.script);
     if (m.contents == NULL) {
         error = "cannot create script contents";
-        goto cleanup;
-    }
-
-    m.global = JS_NewObject(m.context, NULL, NULL, NULL);
-    if (m.global == NULL) {
-        error = "cannot create global object";
-        goto cleanup;
-    }
-
-    if (!JS_InitStandardClasses(m.context, m.global)) {
-        error = "cannot initialize standard classes";
         goto cleanup;
     }
 
@@ -505,28 +513,9 @@ is_compilable_unit(PyObject *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "s", &m.script))
         return NULL;
 
-    m.runtime = JS_NewRuntime(8L * 1024L * 1024L);
-    if (m.runtime == NULL) {
-        error = "cannot create runtime";
+    error = create_jscontext(NULL, &m.runtime, &m.context, &m.global);
+    if (error)
         goto cleanup;
-    }
-
-    m.context = JS_NewContext(m.runtime, 8192);
-    if (m.context == NULL) {
-        error = "cannot create context";
-        goto cleanup;
-    }
-
-    m.global = JS_NewObject(m.context, NULL, NULL, NULL);
-    if (m.global == NULL) {
-        error = "cannot create global object";
-        goto cleanup;
-    }
-
-    if (!JS_InitStandardClasses(m.context, m.global)) {
-        error = "cannot initialize standard classes";
-        goto cleanup;
-    }
 
     m.is_compilable = JS_BufferIsCompilableUnit(m.context, m.global,
                                                 m.script, strlen(m.script));
@@ -539,7 +528,8 @@ cleanup:
         JS_DestroyRuntime(m.runtime);
 
     if (error) {
-        PyErr_SetString(PyExc_StandardError, error);
+        if (*error)
+            PyErr_SetString(PyExc_StandardError, error);
         return NULL;
     }
     if (m.is_compilable) {
