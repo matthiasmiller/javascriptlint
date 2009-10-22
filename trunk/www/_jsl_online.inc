@@ -147,6 +147,11 @@
         return $enc;
     }
 
+    function expandTabs($text)
+    {
+        return str_replace("\t", str_pad("", 4/*tab width*/, " "), $text);
+    }
+
     function OutputLintHTML($engine)
     {
 ?>
@@ -184,7 +189,7 @@
         {
             /* format code */
             $text = $engine->getLineText($lineno);
-            $text = str_replace("\t", str_pad("", 4/*tab width*/, " "), $text);
+            $text = expandTabs($text);
             echo getEncodedText(str_pad($lineno+1, $widthOfLineNo, " ", STR_PAD_LEFT) . '  ' . $text . "\n");
 
             /* show errors */
@@ -201,7 +206,13 @@
 
                 /* point to the error position, if available */
                 if ($Error->getChar() > -1)
-                    echo getEncodedText($lineNoSpacer . str_pad("", $Error->getChar()-1, "=") . "^\n");
+                {
+                    $indent = $engine->getLineText($lineno);
+                    $indent = substr($indent, 0, max(0, $Error->getChar()-1));
+                    $indent = expandTabs($indent);
+                    $indent = str_pad("", strlen($indent), "=");
+                    echo getEncodedText($lineNoSpacer . $indent . "^\n");
+                }
 
                 /* output error type/message */
                 echo getEncodedText($lineNoSpacer) . '<span>';
