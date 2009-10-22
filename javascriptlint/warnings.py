@@ -82,6 +82,7 @@ warnings = {
     'nested_comment': 'nested comment',
     'legacy_cc_not_understood': 'couldn\'t understand control comment using /*@keyword@*/ syntax',
     'var_hides_arg': 'variable {name} hides argument',
+    'identifier_hides_another': 'identifer {name} hides an identifier in a parent scope',
     'duplicate_formal': 'duplicate formal argument {name}',
     'missing_semicolon': 'missing semicolon',
     'missing_semicolon_for_lambda': 'missing semicolon for lambda assignment',

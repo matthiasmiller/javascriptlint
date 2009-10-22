@@ -117,13 +117,14 @@ class Scope:
         if self._parent:
             return self._parent.resolve_identifier(name)
         return None
-    def get_unreferenced_and_undeclared_identifiers(self):
+    def get_identifier_warnings(self):
         """ Returns a tuple of unreferenced and undeclared, where each is a list
             of (scope, name, node) tuples.
         """
         unreferenced = {}
         undeclared = []
-        self._find_unreferenced_and_undeclared(unreferenced, undeclared, False)
+        obstructive = []
+        self._find_warnings(unreferenced, undeclared, obstructive, False)
 
         # Convert "unreferenced" from a dictionary of:
         #   { (scope, name): node }
@@ -134,13 +135,20 @@ class Scope:
                         in unreferenced.items()]
         unreferenced.sort(key=lambda x: x[2].start_pos())
 
-        return unreferenced, undeclared
-    def _find_unreferenced_and_undeclared(self, unreferenced, undeclared,
-                                          is_in_with_scope):
+        return {
+            'unreferenced': unreferenced,
+            'undeclared': undeclared,
+            'obstructive': obstructive,
+        }
+    def _find_warnings(self, unreferenced, undeclared, obstructive,
+                       is_in_with_scope):
         """ unreferenced is a dictionary, such that:
                 (scope, name): node
             }
             undeclared is a list, such that: [
+                (scope, name, node)
+            ]
+            obstructive is a list, such that: [
                 (scope, name, node)
             ]
         """
@@ -152,6 +160,12 @@ class Scope:
         # instead of node, because function parameters share the same node.
         for name, info in self._identifiers.items():
             unreferenced[(self, name)] = info['node']
+
+        # Check for variables that hide an identifier in a parent scope.
+        if self._parent:
+            for name, info in self._identifiers.items():
+                if self._parent.resolve_identifier(name):
+                    obstructive.append((self, name, info['node']))
 
         # Remove all declared variables from the "unreferenced" set; add all
         # undeclared variables to the "undeclared" list.
@@ -170,8 +184,8 @@ class Scope:
                     undeclared.append((self, name, node))
 
         for child in self._kids:
-            child._find_unreferenced_and_undeclared(unreferenced, undeclared,
-                                                    is_in_with_scope)
+            child._find_warnings(unreferenced, undeclared, obstructive,
+                                 is_in_with_scope)
     def find_scope(self, node):
         for kid in self._kids:
             scope = kid.find_scope(node)
@@ -432,10 +446,7 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
 
     for name, node in declares:
         declare_scope = script_cache.scope.find_scope(node)
-        if declare_scope.get_identifier(name):
-            report(node, 'redeclared_var', name=name)
-        else:
-            declare_scope.add_declaration(name, node, 'var')
+        _warn_or_declare(declare_scope, name, 'var', node, report)
 
 def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
     def report_lint(node, errname, pos=None, **errargs):
@@ -466,15 +477,15 @@ def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_call
                           report_native, report_lint, import_callback)
 
     scope = script_cache.scope
-    unreferenced, undeclared = scope.get_unreferenced_and_undeclared_identifiers()
-    for decl_scope, name, node in undeclared:
+    identifier_warnings = scope.get_identifier_warnings()
+    for decl_scope, name, node in identifier_warnings['undeclared']:
         if name in conf['declarations']:
             continue
         if name in _globals:
             continue
         if not script_cache.hasglobal(name):
             report_lint(node, 'undeclared_identifier', name=name)
-    for ref_scope, name, node in unreferenced:
+    for ref_scope, name, node in identifier_warnings['unreferenced']:
         # Ignore the outer scope.
         if ref_scope != scope:
             type_ = ref_scope.get_identifier_type(name)
@@ -486,6 +497,8 @@ def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_call
                 report_lint(node, 'unreferenced_variable', name=name)
             else:
                 assert False, 'Unrecognized identifier type: %s' % type_
+    for ref_scope, name, node in identifier_warnings['obstructive']:
+        report_lint(node, 'identifier_hides_another', name=name)
 
 def _getreporter(visitor, report):
     def onpush(node):
@@ -504,12 +517,14 @@ def _getreporter(visitor, report):
 
 def _warn_or_declare(scope, name, type_, node, report):
     parent_scope, other = scope.resolve_identifier(name) or (None, None)
-    if other and other.kind == tok.FUNCTION and name in other.fn_args:
-        report(node, 'var_hides_arg', name=name)
-    elif other and parent_scope == scope:
-        report(node, 'redeclared_var', name=name)
+    if other and parent_scope == scope:
+        # Only warn about duplications in this scope.
+        # Other scopes will be checked later.
+        if other.kind == tok.FUNCTION and name in other.fn_args:
+            report(node, 'var_hides_arg', name=name)
+        else:
+            report(node, 'redeclared_var', name=name)
     else:
-        # TODO: Warn when hiding a variable in a parent scope.
         scope.add_declaration(name, node, type_)
 
 def _get_scope_checks(scope, report):
