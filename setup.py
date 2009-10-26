@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 
-class _MakefileError(Exception):
+class _BuildError(Exception):
     pass
 
 def _runmakefiles(distutils_dir, build_opt=1, target=None):
@@ -22,12 +22,12 @@ def _runmakefiles(distutils_dir, build_opt=1, target=None):
     ret = subprocess.call(['make', '-f', 'Makefile.ref', '-C',
                            'spidermonkey/src', 'XCFLAGS=-MT'] + args)
     if ret != 0:
-        raise _MakefileError, 'Error running make.'
+        raise _BuildError, 'Error running make.'
 
     # Then copy the files to the build directory.
     ret = subprocess.call(['make', '-f', 'Makefile.SpiderMonkey'] + args)
     if ret != 0:
-        raise _MakefileError, 'Error running make.'
+        raise _BuildError, 'Error running make.'
 
 class _MyBuild(distutils.command.build.build):
     def run(self):
@@ -79,12 +79,22 @@ if __name__ == '__main__':
     except ImportError:
         pass
     else:
+        class _MyPy2Exe(py2exe.build_exe.py2exe):
+            def run(self):
+                py2exe.build_exe.py2exe.run(self)
+                for exe in self.console_exe_files:
+                    ret = subprocess.call(['upx', '-9', exe])
+                    if ret != 0:
+                        raise _BuildError, 'Error running upx on %s' % exe
+        args['cmdclass']['py2exe'] = _MyPy2Exe
+
         args.update(
             console = ['jsl'],
             options = {
                 'py2exe': {
                     'excludes': ['javascriptlint.spidermonkey_'],
-                    'bundle_files': 1
+                    'bundle_files': 1,
+                    'optimize': 2,
                 }
             },
             zipfile = None
