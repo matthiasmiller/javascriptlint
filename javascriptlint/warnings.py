@@ -193,15 +193,19 @@ def _get_exit_points(node):
     elif node.kind == tok.TRY:
         try_, catch_, finally_ = node.kids
 
-        assert catch_.kind == tok.RESERVED
-        catch_, = catch_.kids
-        assert catch_.kind == tok.LEXICALSCOPE
-        catch_, = catch_.kids
-        assert catch_.kind == tok.CATCH
-        ignored, ignored, catch_ = catch_.kids
-        assert catch_.kind == tok.LC
+        exit_points = _get_exit_points(try_)
 
-        exit_points = _get_exit_points(try_) | _get_exit_points(catch_)
+        if catch_:
+            assert catch_.kind == tok.RESERVED
+            catch_, = catch_.kids
+            assert catch_.kind == tok.LEXICALSCOPE
+            catch_, = catch_.kids
+            assert catch_.kind == tok.CATCH
+            ignored, ignored, catch_ = catch_.kids
+            assert catch_.kind == tok.LC
+
+            exit_points |= _get_exit_points(catch_)
+
         if finally_:
             finally_exit_points = _get_exit_points(finally_)
             if None in finally_exit_points:
