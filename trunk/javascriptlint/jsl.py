@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # vim: ts=4 sw=4 expandtab
 import codecs
+import fnmatch
 import glob
 import os
 import sys
@@ -31,26 +32,19 @@ def _lint(paths, conf_):
     lint.lint_files(paths, lint_error, conf=conf_)
 
 def _resolve_paths(path, recurse):
-    if os.path.isfile(path):
-        return [path]
-    elif os.path.isdir(path):
-        dir = path
-        pattern = '*'
-    else:
-        dir, pattern = os.path.split(path)
-
     # Build a list of directories
-    dirs = [dir]
-    if recurse:
-        for cur_root, cur_dirs, cur_files in os.walk(dir):
-            for name in cur_dirs:
-                dirs.append(os.path.join(cur_root, name))
-
-    # Glob all files.
     paths = []
-    for dir in dirs:
-        paths.extend(glob.glob(os.path.join(dir, pattern)))
-    return paths
+
+    dir, pattern = os.path.split(path)
+    for cur_root, cur_dirs, cur_files in os.walk(dir):
+        paths.extend(os.path.join(cur_root, file) for file in \
+                     fnmatch.filter(cur_files, pattern))
+        if not recurse:
+            break
+
+    # If no files have been found, return the original path/pattern. This will
+    # force an error to be thrown if no matching files were found.
+    return paths or [path]
 
 def _profile_enabled(func, *args, **kwargs):
     import tempfile
@@ -73,6 +67,14 @@ def main():
         help="set the conf file")
     add("--profile", dest="profile", action="store_true", default=False,
         help="turn on hotshot profiling")
+    add("--recurse", dest="recurse", action="store_true", default=False,
+        help="recursively search directories on the command line")
+    if os.name == 'nt':
+        add("--disable-wildcards", dest="wildcards", action="store_false",
+            default=True, help="do not resolve wildcards in the command line")
+    else:
+        add("--enable-wildcards", dest="wildcards", action="store_true",
+            default=False, help="resolve wildcards in the command line")
     add("--dump", dest="dump", action="store_true", default=False,
         help="dump this script")
     add("--unittest", dest="unittest", action="store_true", default=False,
@@ -114,7 +116,12 @@ def main():
     for recurse, path in conf_['paths']:
         paths.extend(_resolve_paths(path, recurse))
     for arg in args:
-        paths.extend(_resolve_paths(arg, False))
+        if options.wildcards:
+            paths.extend(_resolve_paths(arg, options.recurse))
+        elif options.recurse and os.path.isdir(arg):
+            paths.extend(_resolve_paths(os.path.join(arg, '*'), True))
+        else:
+            paths.append(arg)
     if options.dump:
         profile_func(_dump, paths)
     else:
