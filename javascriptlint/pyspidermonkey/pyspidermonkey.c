@@ -19,7 +19,6 @@
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof(a[0]))
 
-
 /** CONSTANTS
  */
 static const char* tokens[] = {
@@ -47,6 +46,20 @@ JS_STATIC_ASSERT(ARRAY_COUNT(error_names) == JSErr_Limit);
 #define TOK_TO_NUM(tok) (tok+1000)
 #define OPCODE_TO_NUM(op) (op+2000)
 
+static jschar*
+tojschar(const char* buf) {
+    return (jschar*)buf;
+}
+
+static int
+tojscharlen(int buflen) {
+    /* The buffer length shouldn't be an odd number, buf if it is, the buffer
+       will be truncated to exclude it.
+     */
+    JS_STATIC_ASSERT(sizeof(char) == 1);
+    JS_STATIC_ASSERT(sizeof(jschar) == 2);
+    return buflen / 2;
+}
 
 /** MODULE INITIALIZATION
  */
@@ -415,7 +428,8 @@ static const char* create_jscontext(void* ctx_data,
 static PyObject*
 module_parse(PyObject *self, PyObject *args) {
     struct {
-        const char* script;
+        char* scriptbuf;
+        int scriptbuflen;
         PyObject* pynode;
 
         JSRuntime* runtime;
@@ -423,7 +437,6 @@ module_parse(PyObject *self, PyObject *args) {
         JSObject* global;
         JSTokenStream* token_stream;
         JSParseNode* jsnode;
-        JSString* contents;
 
         JSContextData ctx_data;
     } m;
@@ -433,9 +446,9 @@ module_parse(PyObject *self, PyObject *args) {
     error = "encountered an unknown error";
 
     /* validate arguments */
-    if (!PyArg_ParseTuple(args, "sOOll", &m.script, &m.ctx_data.node_class,
-        &m.ctx_data.error_callback, &m.ctx_data.first_lineno,
-        &m.ctx_data.first_index)) {
+    if (!PyArg_ParseTuple(args, "es#OOll", "utf16", &m.scriptbuf,
+        &m.scriptbuflen, &m.ctx_data.node_class, &m.ctx_data.error_callback,
+        &m.ctx_data.first_lineno, &m.ctx_data.first_index)) {
         return NULL;
     }
 
@@ -453,13 +466,8 @@ module_parse(PyObject *self, PyObject *args) {
     if (error)
         goto cleanup;
 
-    m.contents = JS_NewStringCopyZ(m.context, m.script);
-    if (m.contents == NULL) {
-        error = "cannot create script contents";
-        goto cleanup;
-    }
-
-    m.token_stream = js_NewBufferTokenStream(m.context, JS_GetStringChars(m.contents), JS_GetStringLength(m.contents));
+    m.token_stream = js_NewBufferTokenStream(m.context, tojschar(m.scriptbuf),
+                                             tojscharlen(m.scriptbuflen));
     if (!m.token_stream) {
         error = "cannot create token stream";
         goto cleanup;
@@ -486,6 +494,8 @@ cleanup:
         JS_DestroyContext(m.context);
     if (m.runtime)
         JS_DestroyRuntime(m.runtime);
+    if (m.scriptbuf)
+        PyMem_Free(m.scriptbuf);
 
     if (error) {
         if (*error) {
@@ -499,7 +509,8 @@ cleanup:
 static PyObject*
 is_compilable_unit(PyObject *self, PyObject *args) {
     struct {
-        const char* script;
+        char* scriptbuf;
+        int scriptbuflen;
         JSRuntime* runtime;
         JSContext* context;
         JSObject* global;
@@ -510,15 +521,16 @@ is_compilable_unit(PyObject *self, PyObject *args) {
     memset(&m, 0, sizeof(m));
     error = "encountered an unknown error";
 
-    if (!PyArg_ParseTuple(args, "s", &m.script))
+    if (!PyArg_ParseTuple(args, "es#", "utf16", &m.scriptbuf, &m.scriptbuflen))
         return NULL;
 
     error = create_jscontext(NULL, &m.runtime, &m.context, &m.global);
     if (error)
         goto cleanup;
 
-    m.is_compilable = JS_BufferIsCompilableUnit(m.context, m.global,
-                                                m.script, strlen(m.script));
+    m.is_compilable = JS_UCBufferIsCompilableUnit(m.context, m.global,
+                                                  tojschar(m.scriptbuf),
+                                                  tojscharlen(m.scriptbuflen));
     error = NULL;
 
 cleanup:
@@ -526,6 +538,8 @@ cleanup:
         JS_DestroyContext(m.context);
     if (m.runtime)
         JS_DestroyRuntime(m.runtime);
+    if (m.scriptbuf)
+        PyMem_Free(m.scriptbuf);
 
     if (error) {
         if (*error)
