@@ -3877,15 +3877,28 @@ JS_BufferIsCompilableUnit(JSContext *cx, JSObject *obj,
 {
     jschar *chars;
     JSBool result;
+
+    CHECK_REQUEST(cx);
+    chars = js_InflateString(cx, bytes, &length);
+    if (!chars)
+        return JS_TRUE;
+
+    result = JS_UCBufferIsCompilableUnit(cx, obj, chars, length);
+    JS_free(cx, chars);
+    return result;
+}
+
+JS_PUBLIC_API(JSBool)
+JS_UCBufferIsCompilableUnit(JSContext *cx, JSObject *obj,
+                            const jschar *chars, size_t length)
+{
+    JSBool result;
     JSExceptionState *exnState;
     void *tempMark;
     JSTokenStream *ts;
     JSErrorReporter older;
 
     CHECK_REQUEST(cx);
-    chars = js_InflateString(cx, bytes, &length);
-    if (!chars)
-        return JS_TRUE;
 
     /*
      * Return true on any out-of-memory error, so our caller doesn't try to
@@ -3912,7 +3925,6 @@ JS_BufferIsCompilableUnit(JSContext *cx, JSObject *obj,
         JS_ARENA_RELEASE(&cx->tempPool, tempMark);
     }
 
-    JS_free(cx, chars);
     JS_RestoreExceptionState(cx, exnState);
     return result;
 }

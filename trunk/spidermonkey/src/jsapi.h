@@ -1606,6 +1606,10 @@ extern JS_PUBLIC_API(JSBool)
 JS_BufferIsCompilableUnit(JSContext *cx, JSObject *obj,
                           const char *bytes, size_t length);
 
+JS_PUBLIC_API(JSBool)
+JS_UCBufferIsCompilableUnit(JSContext *cx, JSObject *obj,
+                            const jschar *chars, size_t length);
+
 /*
  * The JSScript objects returned by the following functions refer to string and
  * other kinds of literals, including doubles and RegExp objects.  These
