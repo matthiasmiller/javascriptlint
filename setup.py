@@ -10,6 +10,16 @@ import sys
 class _BuildError(Exception):
     pass
 
+def _getrevnum():
+    path = os.path.dirname(os.path.abspath(__file__))
+    p = subprocess.Popen(['svnversion', path], stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = p.communicate()
+    if p.returncode != 0:
+        raise _BuildError, 'Error running svnversion: %s' % stderr
+    version = stdout.strip().rstrip('M')
+    return int(version)
+
 def _runmakefiles(distutils_dir, build_opt=1, target=None):
     args = ['BUILD_OPT=%i' % build_opt]
     if distutils_dir:
@@ -67,12 +77,12 @@ if __name__ == '__main__':
     args = {}
     args.update(
         name = 'javascriptlint',
-        version = '1.0',
+        version = '0.0.0.%i' % _getrevnum(),
         author = 'Matthias Miller',
         author_email = 'info@javascriptlint.com',
         url = 'http://www.javascriptlint.com/',
         cmdclass = cmdclass,
-        description = 'JavaScript Lint',
+        description = 'JavaScript Lint (pyjsl beta r%i)' % _getrevnum(),
         ext_modules = [pyspidermonkey],
         packages = ['javascriptlint'],
         scripts = ['jsl']
