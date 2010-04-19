@@ -107,7 +107,7 @@ if __name__ == '__main__':
                 'py2exe': {
                     'excludes': ['javascriptlint.spidermonkey_'],
                     'bundle_files': 1,
-                    'optimize': 2,
+                    'optimize': 1, # requires 1 to preserve docstrings
                 }
             },
             zipfile = None

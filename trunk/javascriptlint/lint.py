@@ -531,7 +531,9 @@ def _get_scope_checks(scope, report):
     scopes = [scope]
 
     class scope_checks:
-        ' '
+        """ This is a non-standard visitation class to track scopes. The
+            docstring is unused since this class never throws lint errors.
+        """
         @visitation.visit('push', tok.NAME)
         def _name(self, node):
             if node.node_index == 0 and node.parent.kind == tok.COLON and node.parent.parent.kind == tok.RC:
