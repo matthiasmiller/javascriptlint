@@ -267,7 +267,7 @@ def _findhtmlscripts(contents):
         else:
             assert False, 'Invalid internal tag type %s' % tag['type']
 
-def lint_files(paths, lint_error, conf=conf.Conf()):
+def lint_files(paths, lint_error, conf=conf.Conf(), printpaths=True):
     def lint_file(path, kind):
         def import_script(import_path):
             # The user can specify paths using backslashes (such as when
@@ -281,7 +281,8 @@ def lint_files(paths, lint_error, conf=conf.Conf()):
         normpath = util.normpath(path)
         if normpath in lint_cache:
             return lint_cache[normpath]
-        print normpath
+        if printpaths:
+            print normpath
         contents = util.readfile(path)
         lint_cache[normpath] = _Script()
 
