@@ -21,5 +21,10 @@ function want_assign_or_call() {
     delete a;
 
     a.b();
+
+    /* Test with arguments to the constructor. */
+    new function(x) {
+		this.x = x;
+    }(42);
 }
 
