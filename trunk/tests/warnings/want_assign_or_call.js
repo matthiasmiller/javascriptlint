@@ -24,7 +24,7 @@ function want_assign_or_call() {
 
     /* Test with arguments to the constructor. */
     new function(x) {
-		this.x = x;
+        this.x = x;
     }(42);
 }
 
