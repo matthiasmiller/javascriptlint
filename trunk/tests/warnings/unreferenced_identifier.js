@@ -84,5 +84,19 @@ function unreferenced_identifier() {
             return parm;
         };
     }
+
+    function test_unused(parm) { /*warning:unreferenced_function*/
+        /*jsl:unused parm*/
+        /*jsl:unused bogus_outer*/ /*warning:undeclared_identifier*/
+
+        var unused_var;
+        /*jsl:unused unused_var*/
+
+        with (parm) { /*warning:with_statement*/
+            /*jsl:unused bogus_inner*/ /*warning:undeclared_identifier*/
+            x = 42;
+        }
+    }
+
     return get_callback(42);
 }

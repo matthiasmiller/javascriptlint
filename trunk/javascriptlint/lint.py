@@ -61,7 +61,8 @@ def _parse_control_comment(comment):
         'import': (True),
         'fallthru': (False),
         'pass': (False),
-        'declare': (True)
+        'declare': (True),
+        'unused': (True),
     }
     if control_comment.lower() in control_comments:
         keyword = control_comment.lower()
@@ -82,6 +83,7 @@ class Scope:
         self._kids = []
         self._identifiers = {}
         self._references = []
+        self._unused = []
         self._node = None
     def add_scope(self, node):
         assert not node is None
@@ -98,6 +100,8 @@ class Scope:
         }
     def add_reference(self, name, node):
         self._references.append((name, node))
+    def set_unused(self, name, node):
+        self._unused.append((name, node))
     def get_identifier(self, name):
         if name in self._identifiers:
             return self._identifiers[name]['node']
@@ -182,6 +186,14 @@ class Scope:
                 # with statements cannot have undeclared identifiers.
                 if not is_in_with_scope:
                     undeclared.append((self, name, node))
+
+        # Remove all variables that have been set as "unused".
+        for name, node in self._unused:
+            resolved = self.resolve_identifier(name)
+            if resolved:
+                unreferenced.pop((resolved[0], name), None)
+            else:
+                undeclared.append((self, name, node))
 
         for child in self._kids:
             child._find_warnings(unreferenced, undeclared, obstructive,
@@ -355,6 +367,7 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
 
     parse_errors = []
     declares = []
+    unused_identifiers = []
     import_paths = []
     fallthrus = []
     passes = []
@@ -380,6 +393,11 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
                     report(node, 'jsl_cc_not_understood')
                 else:
                     declares.append((parms, node))
+            elif keyword == 'unused':
+                if not util.isidentifier(parms):
+                    report(node, 'jsl_cc_not_understood')
+                else:
+                    unused_identifiers.append((parms, node))
             elif keyword == 'ignore':
                 if start_ignore:
                     report(node, 'mismatch_ctrl_comments')
@@ -448,6 +466,10 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
     for name, node in declares:
         declare_scope = script_cache.scope.find_scope(node)
         _warn_or_declare(declare_scope, name, 'var', node, report)
+
+    for name, node in unused_identifiers:
+        unused_scope = script_cache.scope.find_scope(node)
+        unused_scope.set_unused(name, node)
 
 def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
     def report_lint(node, errname, pos=None, **errargs):
