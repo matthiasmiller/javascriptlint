@@ -70,12 +70,18 @@ module_parse(PyObject *self, PyObject *args);
 static PyObject*
 is_compilable_unit(PyObject *self, PyObject *args);
 
+static PyObject*
+is_valid_version(PyObject *self, PyObject *args);
+
 static PyMethodDef module_methods[] = {
      {"parse", module_parse, METH_VARARGS,
       "Parses \"script\" and returns a tree of \"node_class\"."},
 
      {"is_compilable_unit", is_compilable_unit, METH_VARARGS,
         "Returns True if \"script\" is a compilable unit."},
+
+     {"is_valid_version", is_valid_version, METH_VARARGS,
+        "Returns True if \"strversion\" is a valid version."},
 
      {NULL, NULL, 0, NULL}        /* Sentinel */
 };
@@ -398,13 +404,22 @@ fail:
 /* Returns NULL on success. Otherwise, it returns an error.
  * If the error is blank, an exception will be set.
  */
-static const char* create_jscontext(void* ctx_data,
+static const char* create_jscontext(const char* strversion, PyObject* is_e4x,
+                                    void* ctx_data,
                                     JSRuntime** runtime, JSContext** context,
                                     JSObject** global)
 {
+    JSVersion jsversion;
+
+    jsversion = JS_StringToVersion(strversion);
+    if (jsversion == JSVERSION_UNKNOWN) {
+        PyErr_SetString(PyExc_ValueError, "\"version\" is invalid");
+        return "";
+    }
+
     *runtime = JS_NewRuntime(8L * 1024L * 1024L);
     if (*runtime == NULL)
-        return"cannot create runtime";
+        return "cannot create runtime";
 
     *context = JS_NewContext(*runtime, 8192);
     if (*context == NULL)
@@ -413,6 +428,11 @@ static const char* create_jscontext(void* ctx_data,
     JS_SetErrorReporter(*context, error_reporter);
     JS_SetContextPrivate(*context, ctx_data);
     JS_ToggleOptions(*context, JSOPTION_STRICT);
+    if (is_e4x == Py_True)
+        JS_ToggleOptions(*context, JSOPTION_XML);
+    else if (is_e4x != Py_False)
+        return "e4x is not a boolean";
+    JS_SetVersion(*context, jsversion);
 
     *global = JS_NewObject(*context, NULL, NULL, NULL);
     if (*global == NULL)
@@ -430,6 +450,8 @@ module_parse(PyObject *self, PyObject *args) {
     struct {
         char* scriptbuf;
         int scriptbuflen;
+        const char* jsversion;
+        PyObject* is_e4x;
         PyObject* pynode;
 
         JSRuntime* runtime;
@@ -446,8 +468,9 @@ module_parse(PyObject *self, PyObject *args) {
     error = "encountered an unknown error";
 
     /* validate arguments */
-    if (!PyArg_ParseTuple(args, "es#OOll", "utf16", &m.scriptbuf,
-        &m.scriptbuflen, &m.ctx_data.node_class, &m.ctx_data.error_callback,
+    if (!PyArg_ParseTuple(args, "es#sO!OOll", "utf16", &m.scriptbuf,
+        &m.scriptbuflen, &m.jsversion, &PyBool_Type, &m.is_e4x,
+        &m.ctx_data.node_class, &m.ctx_data.error_callback,
         &m.ctx_data.first_lineno, &m.ctx_data.first_index)) {
         return NULL;
     }
@@ -462,7 +485,8 @@ module_parse(PyObject *self, PyObject *args) {
         return NULL;
     }
 
-    error = create_jscontext(&m.ctx_data, &m.runtime, &m.context, &m.global);
+    error = create_jscontext(m.jsversion, m.is_e4x, &m.ctx_data,
+                             &m.runtime, &m.context, &m.global);
     if (error)
         goto cleanup;
 
@@ -511,6 +535,8 @@ is_compilable_unit(PyObject *self, PyObject *args) {
     struct {
         char* scriptbuf;
         int scriptbuflen;
+        const char* jsversion;
+        PyObject* is_e4x;
         JSRuntime* runtime;
         JSContext* context;
         JSObject* global;
@@ -521,10 +547,13 @@ is_compilable_unit(PyObject *self, PyObject *args) {
     memset(&m, 0, sizeof(m));
     error = "encountered an unknown error";
 
-    if (!PyArg_ParseTuple(args, "es#", "utf16", &m.scriptbuf, &m.scriptbuflen))
+    if (!PyArg_ParseTuple(args, "es#sO!", "utf16", &m.scriptbuf,
+        &m.scriptbuflen, &m.jsversion, &PyBool_Type, &m.is_e4x)) {
         return NULL;
+    }
 
-    error = create_jscontext(NULL, &m.runtime, &m.context, &m.global);
+    error = create_jscontext(m.jsversion, m.is_e4x, NULL,
+                             &m.runtime, &m.context, &m.global);
     if (error)
         goto cleanup;
 
@@ -546,13 +575,22 @@ cleanup:
             PyErr_SetString(PyExc_StandardError, error);
         return NULL;
     }
-    if (m.is_compilable) {
-        Py_INCREF(Py_True);
-        return Py_True;
-    }
-    else {
-        Py_INCREF(Py_False);
-        return Py_False;
-    }
+    if (m.is_compilable)
+        Py_RETURN_TRUE;
+    else
+        Py_RETURN_FALSE;
+}
+
+static PyObject*
+is_valid_version(PyObject *self, PyObject *args) {
+    const char* strversion = NULL;
+
+    if (!PyArg_ParseTuple(args, "s", &strversion))
+        return NULL;
+
+    if (JS_StringToVersion(strversion) != JSVERSION_UNKNOWN)
+        Py_RETURN_TRUE;
+    else
+        Py_RETURN_FALSE;
 }
 
