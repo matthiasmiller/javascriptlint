@@ -7,6 +7,7 @@ import unittest
 
 import spidermonkey
 from spidermonkey import tok, op
+from util import JSVersion
 
 _tok_names = dict(zip(
     [getattr(tok, prop) for prop in dir(tok)],
@@ -145,6 +146,11 @@ class _Node:
 
         return True
 
+def isvalidversion(jsversion):
+    if jsversion is None:
+        return True
+    return spidermonkey.is_valid_version(jsversion.version)
+
 def findpossiblecomments(script, node_positions):
     pos = 0
     single_line_re = r"//[^\r\n]*"
@@ -193,7 +199,7 @@ def findpossiblecomments(script, node_positions):
         # this one was within a string or a regexp.
         pos = match.start()+1
 
-def parse(script, error_callback, startpos=None):
+def parse(script, jsversion, error_callback, startpos=None):
     """ All node positions will be relative to startpos. This allows scripts
         to be embedded in a file (for example, HTML).
     """
@@ -203,7 +209,10 @@ def parse(script, error_callback, startpos=None):
         error_callback(line, col, msg)
 
     startpos = startpos or NodePos(0,0)
-    return spidermonkey.parse(script, _Node, _wrapped_callback,
+    jsversion = jsversion or JSVersion.default()
+    assert isvalidversion(jsversion)
+    return spidermonkey.parse(script, jsversion.version, jsversion.e4x,
+                              _Node, _wrapped_callback,
                               startpos.line, startpos.col)
 
 def filtercomments(possible_comments, node_positions, root_node):
@@ -237,8 +246,10 @@ def findcomments(script, root_node, start_pos=None):
     possible_comments = findpossiblecomments(script, node_positions)
     return filtercomments(possible_comments, node_positions, root_node)
 
-def is_compilable_unit(script):
-    return spidermonkey.is_compilable_unit(script)
+def is_compilable_unit(script, jsversion):
+    jsversion = jsversion or JSVersion.default()
+    assert isvalidversion(jsversion)
+    return spidermonkey.is_compilable_unit(script, jsversion.version, jsversion.e4x)
 
 def _dump_node(node, depth=0):
     if node is None:
@@ -263,12 +274,12 @@ def _dump_node(node, depth=0):
 def dump_tree(script):
     def error_callback(line, col, msg):
         print '(%i, %i): %s', (line, col, msg)
-    node = parse(script, error_callback)
+    node = parse(script, None, error_callback)
     _dump_node(node)
 
 class TestComments(unittest.TestCase):
     def _test(self, script, expected_comments):
-        root = parse(script, lambda line, col, msg: None)
+        root = parse(script, None, lambda line, col, msg: None)
         comments = findcomments(script, root)
         encountered_comments = [node.atom for node in comments]
         self.assertEquals(encountered_comments, list(expected_comments))
@@ -365,10 +376,11 @@ class TestCompilableUnit(unittest.TestCase):
             ('re = /.*', False),
             ('{ // missing curly', False)
         )
-        for text, result in tests:
-            self.assertEquals(is_compilable_unit(text), result)
+        for text, expected in tests:
+            encountered = is_compilable_unit(text, JSVersion.default())
+            self.assertEquals(encountered, expected)
         # NOTE: This seems like a bug.
-        self.assert_(is_compilable_unit("/* test"))
+        self.assert_(is_compilable_unit("/* test", JSVersion.default()))
 
 class TestLineOffset(unittest.TestCase):
     def testErrorPos(self):
@@ -376,7 +388,7 @@ class TestLineOffset(unittest.TestCase):
             errors = []
             def onerror(line, col, msg):
                 errors.append((line, col, msg))
-            parse(script, onerror, startpos)
+            parse(script, None, onerror, startpos)
             self.assertEquals(len(errors), 1)
             return errors[0]
         self.assertEquals(geterror(' ?', None), (0, 1, 'syntax_error'))
@@ -385,7 +397,7 @@ class TestLineOffset(unittest.TestCase):
         self.assertEquals(geterror('\n ?', NodePos(1,1)), (2, 1, 'syntax_error'))
     def testNodePos(self):
         def getnodepos(script, startpos):
-            root = parse(script, None, startpos)
+            root = parse(script, None, None, startpos)
             self.assertEquals(root.kind, tok.LC)
             var, = root.kids
             self.assertEquals(var.kind, tok.VAR)
@@ -398,7 +410,7 @@ class TestLineOffset(unittest.TestCase):
         self.assertEquals(getnodepos('\n\n var x;', NodePos(3,4)), NodePos(5,1))
     def testComments(self):
         def testcomment(comment, startpos, expectedpos):
-            root = parse(comment, None, startpos)
+            root = parse(comment, None, None, startpos)
             comment, = findcomments(comment, root, startpos)
             self.assertEquals(comment.start_pos(), expectedpos)
         for comment in ('/*comment*/', '//comment'):

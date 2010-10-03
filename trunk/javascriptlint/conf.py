@@ -2,6 +2,7 @@
 import os
 import unittest
 
+import util
 import warnings
 
 def _getwarningsconf():
@@ -80,6 +81,11 @@ DEFAULT_CONF = """\
 #+define document
 
 
+### JavaScript Version
+# To change the default JavaScript version:
+#+default-type text/javascript;version=1.5
+#+default-type text/javascript;e4x=1
+
 ### Files
 # Specify which files to lint
 # Use "+recurse" to enable recursion (disabled by default).
@@ -144,6 +150,17 @@ class ProcessSetting(Setting):
             parm = os.path.join(dir, parm)
         self.value.append((self._recurse.value, parm))
 
+class JSVersionSetting(Setting):
+    wants_parm = True
+    value = util.JSVersion.default()
+    def load(self, enabled, parm):
+        if not enabled:
+            raise ConfError, 'Expected +.'
+        
+        self.value = util.JSVersion.fromtype(parm)
+        if not self.value:
+            raise ConfError, 'Invalid JavaScript version: %s' % parm
+
 class Conf:
     def __init__(self):
         recurse = BooleanSetting(False) 
@@ -157,6 +174,7 @@ class Conf:
             'define': DeclareSetting(),
             'context': BooleanSetting(True),
             'process': ProcessSetting(recurse),
+            'default-version': JSVersionSetting(),
             # SpiderMonkey warnings
             'no_return_value': BooleanSetting(True),
             'equal_as_assign': BooleanSetting(True),

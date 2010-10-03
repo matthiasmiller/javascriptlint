@@ -94,7 +94,9 @@ warnings = {
     'invalid_pass': 'unexpected "pass" control comment',
     'want_assign_or_call': 'expected an assignment or function call',
     'no_return_value': 'function {name} does not always return a value',
-    'anon_no_return_value': 'anonymous function does not always return value'
+    'anon_no_return_value': 'anonymous function does not always return value',
+    'unsupported_version': 'JavaScript {version} is not supported',
+    'incorrect_version': 'Expected /*jsl:content-type*/ control comment. The script was parsed with the wrong version.',
 }
 
 def format_error(errname, **errargs):
@@ -510,6 +512,8 @@ def want_assign_or_call(node):
         return
     # NOTE: Don't handle comma-separated statements.
     if child.kind in (tok.ASSIGN, tok.INC, tok.DEC, tok.DELETE, tok.COMMA):
+        return
+    if child.kind == tok.YIELD:
         return
     # Ignore function calls.
     if child.kind == tok.LP and child.opcode == op.CALL:

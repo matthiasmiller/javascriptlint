@@ -63,6 +63,7 @@ def _parse_control_comment(comment):
         'pass': (False),
         'declare': (True),
         'unused': (True),
+        'content-type': (True),
     }
     if control_comment.lower() in control_comments:
         keyword = control_comment.lower()
@@ -240,19 +241,21 @@ class _Script:
             if global_:
                 return global_
 
-def _findhtmlscripts(contents):
+def _findhtmlscripts(contents, default_version):
     starttag = None
     nodepos = jsparse.NodePositions(contents)
     for tag in htmlparse.findscripttags(contents):
         if tag['type'] == 'start':
             # Ignore nested start tags.
             if not starttag:
-                starttag = tag
+                jsversion =  util.JSVersion.fromattr(tag['attr'], default_version)
+                starttag = dict(tag, jsversion=jsversion)
                 src = tag['attr'].get('src')
                 if src:
                     yield {
                         'type': 'external',
-                        'src': src
+                        'jsversion': jsversion,
+                        'src': src,
                     }
         elif tag['type'] == 'end':
             if not starttag:
@@ -268,25 +271,27 @@ def _findhtmlscripts(contents):
             endoffset = nodepos.to_offset(endpos)
             script = contents[startoffset:endoffset]
 
-            if jsparse.is_compilable_unit(script):
-                starttag = None
+            if not jsparse.isvalidversion(starttag['jsversion']) or \
+               jsparse.is_compilable_unit(script, starttag['jsversion']):
                 if script.strip():
                     yield {
                         'type': 'inline',
+                        'jsversion': starttag['jsversion'],
                         'pos': startpos,
                         'contents': script,
                     }
+                starttag = None
         else:
             assert False, 'Invalid internal tag type %s' % tag['type']
 
 def lint_files(paths, lint_error, conf=conf.Conf(), printpaths=True):
-    def lint_file(path, kind):
-        def import_script(import_path):
+    def lint_file(path, kind, jsversion):
+        def import_script(import_path, jsversion):
             # The user can specify paths using backslashes (such as when
             # linting Windows scripts on a posix environment.
             import_path = import_path.replace('\\', os.sep)
             import_path = os.path.join(os.path.dirname(path), import_path)
-            return lint_file(import_path, 'js')
+            return lint_file(import_path, 'js', jsversion)
         def _lint_error(*args):
             return lint_error(normpath, *args)
 
@@ -300,14 +305,20 @@ def lint_files(paths, lint_error, conf=conf.Conf(), printpaths=True):
 
         script_parts = []
         if kind == 'js':
-            script_parts.append((None, contents))
+            script_parts.append((None, jsversion or conf['default-version'], contents))
         elif kind == 'html':
-            for script in _findhtmlscripts(contents):
+            assert jsversion is None
+            for script in _findhtmlscripts(contents, conf['default-version']):
+                # TODO: Warn about foreign languages.
+                if not script['jsversion']:
+                    continue
+
                 if script['type'] == 'external':
-                    other = import_script(script['src'])
+                    other = import_script(script['src'], script['jsversion'])
                     lint_cache[normpath].importscript(other)
                 elif script['type'] == 'inline':
-                    script_parts.append((script['pos'], script['contents']))
+                    script_parts.append((script['pos'], script['jsversion'],
+                                         script['contents']))
                 else:
                     assert False, 'Invalid internal script type %s' % \
                                   script['type']
@@ -321,12 +332,12 @@ def lint_files(paths, lint_error, conf=conf.Conf(), printpaths=True):
     for path in paths:
         ext = os.path.splitext(path)[1]
         if ext.lower() in ['.htm', '.html']:
-            lint_file(path, 'html')
+            lint_file(path, 'html', None)
         else:
-            lint_file(path, 'js')
+            lint_file(path, 'js', None)
 
-def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
-                      report_native, report_lint, import_callback):
+def _lint_script_part(scriptpos, jsversion, script, script_cache, conf,
+                      ignores, report_native, report_lint, import_callback):
     def parse_error(row, col, msg):
         if not msg in ('anon_no_return_value', 'no_return_value',
                        'redeclared_var', 'var_hides_arg'):
@@ -375,7 +386,28 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
     node_positions = jsparse.NodePositions(script, scriptpos)
     possible_comments = jsparse.findpossiblecomments(script, node_positions)
 
-    root = jsparse.parse(script, parse_error, scriptpos)
+    # Check control comments for the correct version. It may be this comment
+    # isn't a valid comment (for example, it might be inside a string literal)
+    # After parsing, validate that it's legitimate.
+    jsversionnode = None
+    for comment in possible_comments:
+        cc = _parse_control_comment(comment)
+        if cc:
+            node, keyword, parms = cc
+            if keyword == 'content-type':
+                ccversion = util.JSVersion.fromtype(parms)
+                if ccversion:
+                    jsversion = ccversion
+                    jsversionnode = node
+                else:
+                    report(node, 'unsupported_version', version=parms)
+
+    if not jsparse.isvalidversion(jsversion):
+        report_lint(jsversionnode, 'unsupported_version', scriptpos,
+                    version=jsversion.version)
+        return
+
+    root = jsparse.parse(script, jsversion, parse_error, scriptpos)
     if not root:
         # Report errors and quit.
         for pos, msg in parse_errors:
@@ -383,6 +415,11 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
         return
 
     comments = jsparse.filtercomments(possible_comments, node_positions, root)
+
+    if jsversionnode is not None and jsversionnode not in comments:
+        # TODO
+        report(jsversionnode, 'incorrect_version')
+
     start_ignore = None
     for comment in comments:
         cc = _parse_control_comment(comment)
@@ -461,7 +498,7 @@ def _lint_script_part(scriptpos, script, script_cache, conf, ignores,
 
     # Process imports by copying global declarations into the universal scope.
     for path in import_paths:
-        script_cache.importscript(import_callback(path))
+        script_cache.importscript(import_callback(path, jsversion))
 
     for name, node in declares:
         declare_scope = script_cache.scope.find_scope(node)
@@ -494,9 +531,9 @@ def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_call
 
         return lint_error(pos.line, pos.col, errname, errdesc)
 
-    for scriptpos, script in script_parts:
+    for scriptpos, jsversion, script in script_parts:
         ignores = []
-        _lint_script_part(scriptpos, script, script_cache, conf, ignores,
+        _lint_script_part(scriptpos, jsversion, script, script_cache, conf, ignores,
                           report_native, report_lint, import_callback)
 
     scope = script_cache.scope
@@ -620,8 +657,55 @@ ok&amp;
 </html>
 """
         scripts = [(x.get('src'), x.get('contents'))
-                   for x in _findhtmlscripts(html)]
+                   for x in _findhtmlscripts(html, util.JSVersion.default())]
         self.assertEquals(scripts, [
             ('test.js', None),
             (None, "<!--\nvar s = '<script></script>';\n-->")
         ])
+    def testJSVersion(self):
+        def parsetag(starttag, default_version=None):
+            script, = _findhtmlscripts(starttag + '/**/</script>', \
+                                       default_version)
+            return script
+
+        script = parsetag('<script>')
+        self.assertEquals(script['jsversion'], None)
+
+        script = parsetag('<script language="vbscript">')
+        self.assertEquals(script['jsversion'], None)
+
+        script = parsetag('<script type="text/javascript">')
+        self.assertEquals(script['jsversion'], util.JSVersion.default())
+
+        script = parsetag('<SCRIPT TYPE="TEXT/JAVASCRIPT">')
+        self.assertEquals(script['jsversion'], util.JSVersion.default())
+
+        script = parsetag('<script type="text/javascript; version = 1.6 ">')
+        self.assertEquals(script['jsversion'], util.JSVersion('1.6', False))
+
+        script = parsetag('<script type="text/javascript; version = 1.6 ">')
+        self.assertEquals(script['jsversion'], util.JSVersion('1.6', False))
+
+        script = parsetag('<SCRIPT TYPE="TEXT/JAVASCRIPT; e4x = 1 ">')
+        self.assertEquals(script['jsversion'], util.JSVersion('default', True))
+
+        script = parsetag('<script type="" language="livescript">')
+        self.assertEquals(script['jsversion'], util.JSVersion.default())
+
+        script = parsetag('<script type="" language="MOCHA">')
+        self.assertEquals(script['jsversion'], util.JSVersion.default())
+
+        script = parsetag('<script type="" language="JavaScript1.2">')
+        self.assertEquals(script['jsversion'], util.JSVersion('1.2', False))
+
+        script = parsetag('<script type="text/javascript;version=1.2" language="javascript1.4">')
+        self.assertEquals(script['jsversion'], util.JSVersion('1.2', False))
+
+        # Test setting the default version.
+        script = parsetag('<script>', util.JSVersion('1.2', False))
+        self.assertEquals(script['jsversion'], util.JSVersion('1.2', False))
+
+        script = parsetag('<script type="" language="mocha">',
+                              util.JSVersion('1.2', False))
+        self.assertEquals(script['jsversion'], util.JSVersion.default())
+
