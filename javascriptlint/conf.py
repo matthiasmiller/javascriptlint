@@ -2,6 +2,7 @@
 import os
 import unittest
 
+import fs
 import util
 import warnings
 
@@ -186,7 +187,7 @@ class Conf:
 
     def loadfile(self, path):
         path = os.path.abspath(path)
-        conf = open(path, 'r').read()
+        conf = fs.readfile(path)
         try:
             self.loadtext(conf, dir=os.path.dirname(path))
         except ConfError, error:

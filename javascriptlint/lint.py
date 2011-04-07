@@ -4,6 +4,7 @@ import os.path
 import re
 
 import conf
+import fs
 import htmlparse
 import jsparse
 import visitation
@@ -295,12 +296,12 @@ def lint_files(paths, lint_error, conf=conf.Conf(), printpaths=True):
         def _lint_error(*args):
             return lint_error(normpath, *args)
 
-        normpath = util.normpath(path)
+        normpath = fs.normpath(path)
         if normpath in lint_cache:
             return lint_cache[normpath]
         if printpaths:
             print normpath
-        contents = util.readfile(path)
+        contents = fs.readfile(path)
         lint_cache[normpath] = _Script()
 
         script_parts = []
