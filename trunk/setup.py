@@ -20,59 +20,10 @@ def _getrevnum():
     version = stdout.strip().rstrip('M')
     return int(version)
 
-def _runmakefiles(distutils_dir, build_opt=1, target=None):
-    args = ['BUILD_OPT=%i' % build_opt]
-    if distutils_dir:
-        args.append('DISTUTILS_DIR=%s' % distutils_dir)
-    if target:
-        args.append(target)
-
-    # First build SpiderMonkey. Force it to link statically against the CRT to
-    # make deployment easier.
-    if os.name == 'nt':
-        args.append('XCFLAGS=-MT')
-
-    ret = subprocess.call(['make', '-f', 'Makefile.ref', '-C',
-                           'spidermonkey/src'] + args)
-    if ret != 0:
-        raise _BuildError, 'Error running make.'
-
-    # Then copy the files to the build directory.
-    ret = subprocess.call(['make', '-f', 'Makefile.SpiderMonkey'] + args)
-    if ret != 0:
-        raise _BuildError, 'Error running make.'
-
-class _MyBuild(distutils.command.build.build):
-    def run(self):
-        # py2exe is calling reinitialize_command without finalizing.
-        self.ensure_finalized()
-
-        _runmakefiles(self.build_platlib)
-        distutils.command.build.build.run(self)
-
-class _MyClean(distutils.command.clean.clean):
-    def run(self):
-        _runmakefiles(None, target='clean')
-        distutils.command.clean.clean.run(self)
-
 if __name__ == '__main__':
-    if os.name == 'nt':
-        library = 'js32'
-    else:
-        library = 'js'
-    pyspidermonkey = Extension(
-            'javascriptlint.pyspidermonkey',
-            include_dirs = ['spidermonkey/src', 'build/spidermonkey'],
-            library_dirs = ['build/spidermonkey'],
-            libraries = [library],
-            sources = [
-                'javascriptlint/pyspidermonkey/pyspidermonkey.c',
-                'javascriptlint/pyspidermonkey/nodepos.c'
-            ]
-        )
     cmdclass = {
-        'build': _MyBuild,
-        'clean': _MyClean,
+        'build': distutils.command.build.build,
+        'clean': distutils.command.clean.clean,
     }
     args = {}
     args.update(
@@ -83,7 +34,6 @@ if __name__ == '__main__':
         url = 'http://www.javascriptlint.com/',
         cmdclass = cmdclass,
         description = 'JavaScript Lint (pyjsl beta r%i)' % _getrevnum(),
-        ext_modules = [pyspidermonkey],
         packages = ['javascriptlint'],
         scripts = ['jsl']
     )
@@ -105,7 +55,7 @@ if __name__ == '__main__':
             console = ['jsl'],
             options = {
                 'py2exe': {
-                    'excludes': ['javascriptlint.spidermonkey_'],
+                    'excludes': ['resource'],
                     'bundle_files': 1,
                     'optimize': 1, # requires 1 to preserve docstrings
                 }
