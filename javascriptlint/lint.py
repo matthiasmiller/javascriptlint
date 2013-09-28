@@ -48,13 +48,13 @@ def _find_functions(node):
 
 def _parse_control_comment(comment):
     """ Returns None or (keyword, parms) """
-    if comment.atom.lower().startswith('jsl:'):
-        control_comment = comment.atom[4:]
-    elif comment.atom.startswith('@') and comment.atom.endswith('@'):
-        control_comment = comment.atom[1:-1]
+    comment_atom = comment.atom.lower().strip()
+    if comment_atom.startswith('jsl:'):
+        control_comment = comment_atom[4:]
+    elif comment_atom.startswith('@') and comment_atom.endswith('@'):
+        control_comment = comment_atom[1:-1]
     else:
         return None
-    control_comment = control_comment.lower().rstrip()
 
     keywords = (
         'ignoreall',
