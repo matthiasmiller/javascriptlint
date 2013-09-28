@@ -15,17 +15,3 @@
 > add test for syntax error
 > consider reimplementing abiguous_newline
 
-
-** UPGRADING SPIDERMONKEY
-
-Use the following command to upgrade SpiderMonkey. Replace X.X.X with the
-version number. js-X.X.X is the directory containing the new version of
-SpiderMonkey. Use a relative path for pretty commit messages.
-
-svn_load_dirs.pl \
-    -t X.X.X \
-    -p svn_load_dirs.conf \
-    https://javascriptlint.svn.sourceforge.net/svnroot/javascriptlint/vendorsrc/Mozilla.org/js \
-    current \
-    js-X.X.X
-
