@@ -361,12 +361,12 @@ def main(action='', host=''):
     if action == 'build':
         build(host)
         return
-    print >>sys.stderr, """\
+    sys.stderr.write("""\
 Usage: www.py [server|build] <host>
 
 server     runs a test server on localhost
 build      generates static HTML files from the markup
-"""
+""")
     sys.exit(1)
 
 if __name__ == '__main__':
