@@ -53,7 +53,7 @@ class _URLPostProcessor(markdown.Postprocessor):
                 if not attrvalue.startswith('/'):
                     targetpath = _get_path_for_url(attrvalue, self._filepath)
                     if not targetpath:
-                        raise ValueError, 'Could not resolve URL %s' % attrvalue
+                        raise ValueError('Could not resolve URL %s' % attrvalue)
 
                     # Get the folder of the parent path.
                     parenturl = _get_relurl_for_filepath(self._filepath)
@@ -89,7 +89,7 @@ def _get_path_for_url(url, parentpath):
             root = os.path.dirname(parentpath)
             assert (root + os.sep).startswith(DOC_ROOT + os.sep)
         else:
-            raise ValueError, 'Tried resolving relative URL: %s' % url
+            raise ValueError('Tried resolving relative URL: %s' % url)
 
     urls = [
         url.rstrip('/') + '/index.htm',
@@ -136,11 +136,11 @@ def _gen_rss(host, path, source, title, link, desc, linkbase):
     channel = doc.createElement("channel")
     rss.appendChild(channel)
     if not title:
-        raise ValueError, 'Missing @title= setting.'
+        raise ValueError('Missing @title= setting.')
     if not link:
-        raise ValueError, 'Missing @link= setting.'
+        raise ValueError('Missing @link= setting.')
     if not desc:
-        raise ValueError, 'Missing @desc= setting.'
+        raise ValueError('Missing @desc= setting.')
     channel.appendChild(doc.createElement('title', textNode=title))
     channel.appendChild(doc.createElement('link', textNode=link))
     channel.appendChild(doc.createElement('description', textNode=desc))
@@ -153,7 +153,7 @@ def _gen_rss(host, path, source, title, link, desc, linkbase):
     for child in oldDocElement.childNodes:
         if child.type != "element":
             if child.value.strip():
-                raise ValueError, 'Expected outer-level element, not text.'
+                raise ValueError('Expected outer-level element, not text.')
             continue
 
         if child.nodeName == 'h1':
@@ -161,24 +161,24 @@ def _gen_rss(host, path, source, title, link, desc, linkbase):
         elif child.nodeName == "h2":
             link = len(child.childNodes) == 1 and child.childNodes[0]
             if not link or link.type != 'element' or link.nodeName != 'a':
-                raise ValueError, 'Each heading must be a link.'
+                raise ValueError('Each heading must be a link.')
 
             titlenode = len(link.childNodes) == 1 and link.childNodes[0]
             if not titlenode or titlenode.type != 'text':
-                raise ValueError, 'Each heading link must contain a ' + \
-                                  'single text node.'
+                raise ValueError('Each heading link must contain a ' + \
+                                 'single text node.')
             heading = titlenode.value.strip()
 
             # Combine the href with the linkbase.
             assert 'href' in link.attributes
             href = link.attribute_values['href']
             if not linkbase.endswith('/'):
-                raise ValueError, 'The @linkbase must be a directory: %s' % \
-                                  linkbase
+                raise ValueError('The @linkbase must be a directory: %s' % \
+                                 linkbase)
             href = linkbase + href
 
             if href in guids:
-                raise ValueError, "Duplicate link: %s" % href
+                raise ValueError("Duplicate link: %s" % href)
             guids.append(href)
 
             item = doc.createElement("item")
@@ -193,21 +193,21 @@ def _gen_rss(host, path, source, title, link, desc, linkbase):
                 # The first paragraph is <p><em>pubDate</em></p>
                 em = len(child.childNodes) == 1 and child.childNodes[0]
                 if not em or em.type != 'element'  or em.nodeName != 'em':
-                    raise ValueError, 'The first paragraph must contain ' + \
-                                      'only an <em>.'
+                    raise ValueError('The first paragraph must contain ' + \
+                                     'only an <em>.')
 
                 emchild = len(em.childNodes) == 1 and em.childNodes[0]
                 if not emchild or emchild.type != 'text':
-                    raise ValueError, "The first paragraph's em must " + \
-                                      "contain only text."
+                    raise ValueError("The first paragraph's em must " + \
+                                     "contain only text.")
                 pubdate = emchild.value
 
                 format = "%a, %d %b %Y %H:%M:%S +0000"
                 dateobj = datetime.datetime.strptime(pubdate, format)
                 normalized = dateobj.strftime(format)
                 if normalized != pubdate:
-                    raise ValueError, 'Encountered date %s but expected %s' % \
-                                      (pubdate, normalized)
+                    raise ValueError('Encountered date %s but expected %s' % \
+                                     (pubdate, normalized))
 
 
                 item.appendChild(doc.createElement('pubDate', emchild.value))
@@ -218,7 +218,7 @@ def _gen_rss(host, path, source, title, link, desc, linkbase):
                 item_desc.appendChild(cdata)
 
         else:
-            raise ValueError, 'Unsupported node type: %s' % child.nodeName
+            raise ValueError('Unsupported node type: %s' % child.nodeName)
     return doc.toxml()
 
 def _preprocess(path):
@@ -227,13 +227,13 @@ def _preprocess(path):
         # will resolve.
         url = match.group(1).strip()
         if '/' in url:
-            raise ValueError, 'Inclusions cannot cross directories'
+            raise ValueError('Inclusions cannot cross directories')
 
         # When including a file, update global settings and replace
         # with contents.
         includepath = _get_path_for_url(url, path)
         if not includepath:
-            raise ValueError, 'Unmatched URL: %s' % match.group(1)
+            raise ValueError('Unmatched URL: %s' % match.group(1))
         settings, contents = _preprocess(includepath)
         childsettings.update(settings)
         return contents
@@ -291,7 +291,7 @@ def _transform_file(host, path):
             page = open(template_path).read() % keywords
         return 'text/html', page
     else:
-        raise ValueError, 'Invalid file type: %s' % path
+        raise ValueError('Invalid file type: %s' % path)
 
 class _Handler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -339,7 +339,7 @@ def build(host):
                 yield relpath
 
     if not host or '/' in host:
-        raise ValueError, 'Host must be sub.domain.com'
+        raise ValueError('Host must be sub.domain.com')
 
     for relpath in findfiles(DOC_ROOT):
         sourcepath = os.path.join(DOC_ROOT, relpath)

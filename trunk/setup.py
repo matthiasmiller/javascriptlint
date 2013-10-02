@@ -16,7 +16,7 @@ def _getrevnum():
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = p.communicate()
     if p.returncode != 0:
-        raise _BuildError, 'Error running svnversion: %s' % stderr
+        raise _BuildError('Error running svnversion: %s' % stderr)
     version = stdout.strip().rstrip('M')
     return int(version)
 
@@ -48,7 +48,7 @@ if __name__ == '__main__':
                 for exe in self.console_exe_files:
                     ret = subprocess.call(['upx', '-9', exe])
                     if ret != 0:
-                        raise _BuildError, 'Error running upx on %s' % exe
+                        raise _BuildError('Error running upx on %s' % exe)
         args['cmdclass']['py2exe'] = _MyPy2Exe
 
         args.update(
