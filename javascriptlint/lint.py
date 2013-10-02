@@ -19,7 +19,7 @@ _newline_kinds = (
     'eof', 'comma', 'dot', 'semi', 'colon', 'lc', 'rc', 'lp', 'rb', 'assign',
     'relop', 'hook', 'plus', 'minus', 'star', 'divop', 'eqop', 'shop', 'or',
     'and', 'bitor', 'bitxor', 'bitand', 'else', 'try'
-) 
+)
 
 _globals = frozenset([
     'Array', 'Boolean', 'Math', 'Number', 'String', 'RegExp', 'Script', 'Date',
@@ -27,7 +27,7 @@ _globals = frozenset([
     'eval', 'NaN', 'Infinity',
     'escape', 'unescape', 'uneval',
     'decodeURI', 'encodeURI', 'decodeURIComponent', 'encodeURIComponent',
-    'Function', 'Object', 
+    'Function', 'Object',
     'Error', 'InternalError', 'EvalError', 'RangeError', 'ReferenceError',
     'SyntaxError', 'TypeError', 'URIError',
     'arguments', 'undefined'
