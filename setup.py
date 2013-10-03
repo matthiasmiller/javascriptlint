@@ -7,20 +7,12 @@ import os
 import subprocess
 import sys
 
+from javascriptlint import version
+
 class _BuildError(Exception):
     pass
 
-def _getrevnum():
-    path = os.path.dirname(os.path.abspath(__file__))
-    p = subprocess.Popen(['svnversion', path], stdin=subprocess.PIPE,
-                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = p.communicate()
-    if p.returncode != 0:
-        raise _BuildError('Error running svnversion: %s' % stderr)
-    version = stdout.strip().rstrip('M')
-    return int(version)
-
-if __name__ == '__main__':
+def _setup():
     cmdclass = {
         'build': distutils.command.build.build,
         'clean': distutils.command.clean.clean,
@@ -28,12 +20,12 @@ if __name__ == '__main__':
     args = {}
     args.update(
         name = 'javascriptlint',
-        version = '0.0.0.%i' % _getrevnum(),
+        version = version.version,
         author = 'Matthias Miller',
         author_email = 'info@javascriptlint.com',
         url = 'http://www.javascriptlint.com/',
         cmdclass = cmdclass,
-        description = 'JavaScript Lint (pyjsl beta r%i)' % _getrevnum(),
+        description = 'JavaScript Lint %s' % version.version,
         packages = ['javascriptlint'],
         scripts = ['jsl']
     )
@@ -64,3 +56,18 @@ if __name__ == '__main__':
         )
     setup(**args)
 
+def _main():
+    # Create a temporary __svnversion__.py to bundle the version
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        'javascriptlint', '__svnversion__.py')
+    with open(path, 'w') as f:
+        f.write('version = %r' % version.version)
+    try:
+        _setup()
+    finally:
+        os.unlink(path)
+        if os.path.exists(path + 'c'):
+            os.unlink(path + 'c')
+
+if __name__ == '__main__':
+    _main()
