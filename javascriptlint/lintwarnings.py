@@ -16,8 +16,6 @@ For example:
 """
 import itertools
 import re
-import sys
-import types
 
 import util
 
