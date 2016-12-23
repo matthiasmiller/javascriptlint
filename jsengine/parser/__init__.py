@@ -814,7 +814,9 @@ def parsestring(s, start_offset=0):
     nodes = _sourceelements(t, tok.EOF)
     lc_end_offset = t.expect(tok.EOF).end_offset
     lc_start_offset = nodes[-1].start_offset if nodes else lc_end_offset
-    return ParseNode(kind.LC, None, lc_start_offset, lc_end_offset, None, nodes)
+    root = ParseNode(kind.LC, None, lc_start_offset, lc_end_offset, None, nodes)
+    _validate(root)
+    return root
 
 def is_valid_version(version):
     return version in _VERSIONS
@@ -825,16 +827,10 @@ def _validate(node, depth=0):
             assert kid.parent is node
             _validate(kid, depth+1)
 
-def parse(script, jsversion, error_callback, start_offset):
+def parse(script, jsversion, start_offset):
     # TODO: respect version
     assert is_valid_version(jsversion)
-    try:
-        root = parsestring(script, start_offset)
-    except JSSyntaxError as error:
-        error_callback(error.offset, error.msg, error.msg_args)
-        return None
-    _validate(root)
-    return root
+    return parsestring(script, start_offset)
 
 def is_compilable_unit(script, jsversion):
     # TODO: respect version

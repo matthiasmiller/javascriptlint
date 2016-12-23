@@ -4,6 +4,7 @@
 import re
 import unittest
 
+from jsengine import JSSyntaxError
 import jsengine.parser
 from jsengine.parser import kind as tok
 from jsengine.parser import op
@@ -51,15 +52,14 @@ def findpossiblecomments(script, script_offset):
         # this one was within a string or a regexp.
         pos = match.start()+1
 
-def parse(script, jsversion, error_callback, start_offset=0):
+def parse(script, jsversion, start_offset=0):
     """ All node positions will be relative to start_offset. This allows
         scripts to be embedded in a file (for example, HTML).
     """
     assert not start_offset is None
     jsversion = jsversion or JSVersion.default()
     assert isvalidversion(jsversion), jsversion
-    return jsengine.parser.parse(script, jsversion.version,
-                                 error_callback, start_offset)
+    return jsengine.parser.parse(script, jsversion.version, start_offset)
 
 def filtercomments(possible_comments, root_node):
     comment_ignore_ranges = NodeRanges()
@@ -126,15 +126,18 @@ def _dump_node(node, node_positions, depth=0):
             _dump_node(node, node_positions, depth+1)
 
 def dump_tree(script):
-    def error_callback(line, col, msg, msg_args):
-        print '(%i, %i): %s', (line, col, msg)
-    node = parse(script, None, error_callback)
     node_positions = NodePositions(script)
+    try:
+        node = parse(script, None)
+    except JSSyntaxError, error:
+        pos = node_positions.from_offset(error.offset)
+        print 'Line %i, Column %i: %s' % (pos.line+1, pos.col+1, error.msg)
+        return
     _dump_node(node, node_positions)
 
 class TestComments(unittest.TestCase):
     def _test(self, script, expected_comments):
-        root = parse(script, None, lambda line, col, msg: None)
+        root = parse(script, None)
         comments = findcomments(script, root)
         encountered_comments = [node.atom for node in comments]
         self.assertEquals(encountered_comments, list(expected_comments))
@@ -239,19 +242,18 @@ class TestCompilableUnit(unittest.TestCase):
 class TestLineOffset(unittest.TestCase):
     def testErrorPos(self):
         def geterror(script, start_offset):
-            errors = []
-            def onerror(offset, msg, msg_args):
-                errors.append((offset, msg, msg_args))
-            parse(script, None, onerror, start_offset)
-            self.assertEquals(len(errors), 1)
-            return errors[0]
+            try:
+                parse(script, None, start_offset)
+            except JSSyntaxError, error:
+                return (error.offset, error.msg, error.msg_args)
+            assert False
         self.assertEquals(geterror(' ?', 0), (1, 'syntax_error', {}))
         self.assertEquals(geterror('\n ?', 0), (2, 'syntax_error', {}))
         self.assertEquals(geterror(' ?', 2), (3, 'syntax_error', {}))
         self.assertEquals(geterror('\n ?', 2), (4, 'syntax_error', {}))
     def testNodePos(self):
         def getnodepos(script, start_offset):
-            root = parse(script, None, None, start_offset)
+            root = parse(script, None, start_offset)
             self.assertEquals(root.kind, tok.LC)
             var, = root.kids
             self.assertEquals(var.kind, tok.VAR)
@@ -264,7 +266,7 @@ class TestLineOffset(unittest.TestCase):
         self.assertEquals(getnodepos('\n\n var x;', 7), 10)
     def testComments(self):
         def testcomment(comment, startpos, expected_offset):
-            root = parse(comment, None, None, startpos)
+            root = parse(comment, None, startpos)
             comment, = findcomments(comment, root, startpos)
             self.assertEquals(comment.start_offset, expected_offset)
         for comment in ('/*comment*/', '//comment'):

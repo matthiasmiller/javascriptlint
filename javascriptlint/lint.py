@@ -351,9 +351,6 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
 
 def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
                       report_parse_error, report_lint, import_callback):
-    def parse_error(offset, msg, msg_args):
-        parse_errors.append((offset, msg, msg_args))
-
     def report(node, errname, offset=0, **errargs):
         if errname == 'empty_statement' and node.kind == tok.LC:
             for pass_ in passes:
@@ -387,7 +384,6 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
 
         report_lint(node, errname, offset, **errargs)
 
-    parse_errors = []
     declares = []
     unused_identifiers = []
     import_paths = []
@@ -421,11 +417,11 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
         report_lint(None, 'e4x_deprecated',
                     jsversionnode.start_offset if jsversionnode else script_offset)
 
-    root = jsparse.parse(script, jsversion, parse_error, script_offset)
-    if not root:
+    try:
+        root = jsparse.parse(script, jsversion, script_offset)
+    except jsparse.JSSyntaxError, error:
         # Report errors and quit.
-        for offset, msg, msg_args in parse_errors:
-            report_parse_error(offset, msg, msg_args)
+        report_parse_error(error.offset, error.msg, error.msg_args)
         return
 
     comments = jsparse.filtercomments(possible_comments, root)
@@ -486,10 +482,6 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
                 report(comment, 'legacy_cc_not_understood')
     if start_ignore:
         report(start_ignore, 'mismatch_ctrl_comments')
-
-    # Wait to report parse errors until loading jsl:ignore directives.
-    for offset, msg in parse_errors:
-        report_parse_error(offset, msg)
 
     # Find all visitors and convert them into "onpush" callbacks that call "report"
     visitors = {
