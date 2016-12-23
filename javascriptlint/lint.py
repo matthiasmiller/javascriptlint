@@ -417,6 +417,10 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
                     version=jsversion.version)
         return
 
+    if jsversion.e4x:
+        report_lint(None, 'e4x_deprecated',
+                    jsversionnode.start_offset if jsversionnode else script_offset)
+
     root = jsparse.parse(script, jsversion, parse_error, script_offset)
     if not root:
         # Report errors and quit.
