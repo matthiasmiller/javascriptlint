@@ -15,12 +15,6 @@ import util
 from jsengine.parser import kind as tok
 from jsengine.parser import op
 
-_newline_kinds = (
-    'eof', 'comma', 'dot', 'semi', 'colon', 'lc', 'rc', 'lp', 'rb', 'assign',
-    'relop', 'hook', 'plus', 'minus', 'star', 'divop', 'eqop', 'shop', 'or',
-    'and', 'bitor', 'bitxor', 'bitand', 'else', 'try'
-)
-
 _globals = frozenset([
     'Array', 'Boolean', 'Math', 'Number', 'String', 'RegExp', 'Script', 'Date',
     'isNaN', 'isFinite', 'parseFloat', 'parseInt',
@@ -32,19 +26,6 @@ _globals = frozenset([
     'SyntaxError', 'TypeError', 'URIError',
     'arguments', 'undefined'
 ])
-
-def _find_function(node):
-    while node and node.kind != tok.FUNCTION:
-        node = node.parent
-    return node
-
-def _find_functions(node):
-    functions = []
-    while node:
-        if node.kind == tok.FUNCTION:
-            functions.append(node)
-        node = node.parent
-    return functions
 
 def _parse_control_comment(comment):
     """ Returns None or (keyword, parms) """
