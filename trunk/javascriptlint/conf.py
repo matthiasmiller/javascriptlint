@@ -180,11 +180,13 @@ class ConfSetting(Setting):
     wants_parm = True
     wants_dir = True
     def __init__(self, conf):
+        self.value = None
         self._conf = conf
     def load(self, enabled, parm, dir):
         if dir:
             parm = os.path.join(dir, parm)
         self._conf.loadfile(parm)
+        self.value = parm
 
 class Conf:
     def __init__(self):
