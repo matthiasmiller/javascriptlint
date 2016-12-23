@@ -76,54 +76,61 @@ def _parse_control_comment(comment):
             parms = control_comment[len(keyword):].strip()
             return (comment, keyword, parms.strip())
 
-class Scope:
+class ScopeObject:
     """ Outer-level scopes will never be associated with a node.
         Inner-level scopes will always be associated with a node.
     """
-    def __init__(self):
-        self._parent = None
+    def __init__(self, parent, node, type_):
+        assert type_ in ('scope', 'arg', 'function', 'var'), \
+            'Unrecognized identifier type: %s' % type_
+        self._parent = parent
+        self._node = node
+        self._type = type_
         self._kids = []
         self._identifiers = {}
         self._references = []
         self._unused = []
-        self._node = None
+
+    @property
+    def parent_scope(self):
+        return self._parent
+
+    @property
+    def node(self):
+        return self._node
+
     def add_scope(self, node):
         assert not node is None
-        self._kids.append(Scope())
+        self._kids.append(ScopeObject(self, node, 'scope'))
         self._kids[-1]._parent = self
         self._kids[-1]._node = node
         return self._kids[-1]
+
     def add_declaration(self, name, node, type_):
-        assert type_ in ('arg', 'function', 'var'), \
-            'Unrecognized identifier type: %s' % type_
         assert isinstance(name, basestring)
-        self._identifiers[name] = {
-            'node': node,
-            'type': type_
-        }
+        self._identifiers[name] = ScopeObject(self, node, type_)
+
     def add_reference(self, name, node):
         self._references.append((name, node))
+
     def set_unused(self, name, node):
         self._unused.append((name, node))
-    def get_identifier(self, name):
+
+    def has_property(self, name):
+        return name in self._identifiers
+
+    def get_property_type(self, name):
         if name in self._identifiers:
-            return self._identifiers[name]['node']
+            return self._identifiers[name]._type
         else:
             return None
-    def get_identifier_type(self, name):
+    def resolve_property(self, name):
         if name in self._identifiers:
-            return self._identifiers[name]['type']
-        else:
-            return None
-    def get_identifiers(self):
-        "returns a list of names"
-        return self._identifiers.keys()
-    def resolve_identifier(self, name):
-        if name in self._identifiers:
-            return self, self._identifiers[name]['node']
+            return self._identifiers[name]
         if self._parent:
-            return self._parent.resolve_identifier(name)
+            return self._parent.resolve_property(name)
         return None
+
     def get_identifier_warnings(self):
         """ Returns a tuple of unreferenced and undeclared, where each is a list
             of (scope, name, node) tuples.
@@ -147,6 +154,7 @@ class Scope:
             'undeclared': undeclared,
             'obstructive': obstructive,
         }
+
     def _find_warnings(self, unreferenced, undeclared, obstructive,
                        is_in_with_scope):
         """ unreferenced is a dictionary, such that:
@@ -166,25 +174,25 @@ class Scope:
         # them if they are referenced.  Variables need to be keyed by name
         # instead of node, because function parameters share the same node.
         for name, info in self._identifiers.items():
-            unreferenced[(self, name)] = info['node']
+            unreferenced[(self, name)] = info.node
 
         # Check for variables that hide an identifier in a parent scope.
         if self._parent:
             for name, info in self._identifiers.items():
-                if self._parent.resolve_identifier(name):
-                    obstructive.append((self, name, info['node']))
+                if self._parent.resolve_property(name):
+                    obstructive.append((self, name, info.node))
 
         # Remove all declared variables from the "unreferenced" set; add all
         # undeclared variables to the "undeclared" list.
         for name, node in self._references:
-            resolved = self.resolve_identifier(name)
+            resolved = self.resolve_property(name)
             if resolved:
                 # Make sure this isn't an assignment.
                 if node.parent.kind in (tok.ASSIGN, tok.INC, tok.DEC) and \
                    node.node_index == 0 and \
                    node.parent.parent.kind == tok.SEMI:
                     continue
-                unreferenced.pop((resolved[0], name), None)
+                unreferenced.pop((resolved.parent_scope, name), None)
             else:
                 # with statements cannot have undeclared identifiers.
                 if not is_in_with_scope:
@@ -192,9 +200,9 @@ class Scope:
 
         # Remove all variables that have been set as "unused".
         for name, node in self._unused:
-            resolved = self.resolve_identifier(name)
+            resolved = self.resolve_property(name)
             if resolved:
-                unreferenced.pop((resolved[0], name), None)
+                unreferenced.pop((resolved.parent_scope, name), None)
             else:
                 undeclared.append((self, name, node))
 
@@ -221,7 +229,7 @@ class Scope:
 class _Script:
     def __init__(self):
         self._imports = set()
-        self.scope = Scope()
+        self.scope = ScopeObject(None, None, 'scope')
     def importscript(self, script):
         self._imports.add(script)
     def hasglobal(self, name):
@@ -233,7 +241,7 @@ class _Script:
             return
 
         # Check this scope.
-        if self.scope.get_identifier(name):
+        if self.scope.has_property(name):
             return self
         searched.add(self)
 
@@ -554,7 +562,7 @@ def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_call
     for ref_scope, name, node in identifier_warnings['unreferenced']:
         # Ignore the outer scope.
         if ref_scope != scope:
-            type_ = ref_scope.get_identifier_type(name)
+            type_ = ref_scope.get_property_type(name)
             if type_ == 'arg':
                 report_lint(node, 'unreferenced_argument', name=name)
             elif type_ == 'function':
@@ -582,11 +590,11 @@ def _getreporter(visitor, report):
     return onpush
 
 def _warn_or_declare(scope, name, type_, node, report):
-    parent_scope, other = scope.resolve_identifier(name) or (None, None)
-    if other and parent_scope == scope:
+    property = scope.resolve_property(name)
+    if property and property.parent_scope == scope:
         # Only warn about duplications in this scope.
         # Other scopes will be checked later.
-        if other.kind == tok.NAME and other.opcode == op.ARGNAME:
+        if property.node.kind == tok.NAME and property.node.opcode == op.ARGNAME:
             report(node, 'var_hides_arg', name=name)
         else:
             report(node, 'redeclared_var', name=name)
@@ -617,7 +625,7 @@ def _get_scope_checks(scope, report):
                 _warn_or_declare(scopes[-1], node.fn_name, 'function', node, report)
             self._push_scope(node)
             for var_name in node.fn_args:
-                if scopes[-1].get_identifier(var_name.atom):
+                if scopes[-1].has_property(var_name.atom):
                     report(var_name, 'duplicate_formal', name=var_name.atom)
                 scopes[-1].add_declaration(var_name.atom, var_name, 'arg')
 
