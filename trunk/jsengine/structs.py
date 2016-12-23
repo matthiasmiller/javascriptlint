@@ -5,6 +5,8 @@ import functools
 from parser._constants_kind import kind
 from parser._constants_op import op
 
+__all__ = ['NodePositions', 'NodePos', 'NodeRanges', 'ParseNode']
+
 class NodePositions:
     " Given a string, allows [x] lookups for NodePos line and column numbers."
     def __init__(self, text, start_pos=None):

@@ -42,7 +42,7 @@ def findpossiblecomments(script, script_offset):
         start_offset = match.start()
         end_offset = match.end()-1
 
-        comment_node = ParseNode(kind.COMMENT, opcode,
+        comment_node = ParseNode(tok.COMMENT, opcode,
                                  script_offset + start_offset,
                                  script_offset + end_offset, comment_text, [])
         comments.append(comment_node)
@@ -95,7 +95,7 @@ def find_trailing_whitespace(script, script_offset):
     for match in trailing_whitespace.finditer(script):
         start = match.start('whitespace')
         end = match.end('whitespace')
-        nodes.append(ParseNode(kind.WHITESPACE, None,
+        nodes.append(ParseNode(tok.WHITESPACE, None,
                                script_offset + start,
                                script_offset + end-1,
                                script[start:end], []))

@@ -1,9 +1,7 @@
 #!/usr/bin/python
 # vim: ts=4 sw=4 expandtab
-import codecs
 import fnmatch
 import functools
-import glob
 import os
 import sys
 import unittest
