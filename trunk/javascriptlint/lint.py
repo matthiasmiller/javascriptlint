@@ -352,9 +352,7 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
 def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
                       report_parse_error, report_lint, import_callback):
     def parse_error(offset, msg, msg_args):
-        if not msg in ('anon_no_return_value', 'no_return_value',
-                       'redeclared_var', 'var_hides_arg'):
-            parse_errors.append((offset, msg, msg_args))
+        parse_errors.append((offset, msg, msg_args))
 
     def report(node, errname, offset=0, **errargs):
         if errname == 'empty_statement' and node.kind == tok.LC:
