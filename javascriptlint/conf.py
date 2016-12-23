@@ -5,7 +5,7 @@ import unittest
 import fs
 import util
 import version
-import warnings
+import lintwarnings
 
 _DISABLED_WARNINGS = (
    'block_without_braces',
@@ -16,8 +16,8 @@ _DISABLED_WARNINGS = (
 
 def _getwarningsconf():
     lines = []
-    for name in sorted(warnings.warnings.keys()):
-        message = warnings.warnings[name]
+    for name in sorted(lintwarnings.warnings.keys()):
+        message = lintwarnings.warnings[name]
         sign = '+'
         if name in _DISABLED_WARNINGS:
             sign = '-'
@@ -207,7 +207,7 @@ class Conf:
             'anon_no_return_value': BooleanSetting(True),
             'decorate_function_name_warning': BooleanSetting(False),
         }
-        for name in warnings.warnings:
+        for name in lintwarnings.warnings:
             self._settings[name] = BooleanSetting(True)
         for warning in _DISABLED_WARNINGS:
            self.loadline('-%s' % warning)

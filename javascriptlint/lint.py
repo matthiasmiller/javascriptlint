@@ -7,8 +7,8 @@ import conf
 import fs
 import htmlparse
 import jsparse
+import lintwarnings
 import visitation
-import warnings
 import unittest
 import util
 
@@ -482,7 +482,7 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
 
     # Find all visitors and convert them into "onpush" callbacks that call "report"
     visitors = {
-        'push': warnings.make_visitors(conf)
+        'push': lintwarnings.make_visitors(conf)
     }
     for event in visitors:
         for kind, callbacks in visitors[event].items():
@@ -516,11 +516,11 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
 
 def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
     def report_lint(node, errname, offset=0, **errargs):
-        errdesc = warnings.format_error(errname, **errargs)
+        errdesc = lintwarnings.format_error(errname, **errargs)
         _report(offset or node.start_offset, errname, errdesc, True)
 
     def report_native(offset, errname, errargs):
-        errdesc = warnings.format_error(errname, **errargs)
+        errdesc = lintwarnings.format_error(errname, **errargs)
         _report(offset, errname, errdesc, False)
 
     def _report(offset, errname, errdesc, require_key):
@@ -571,7 +571,7 @@ def _getreporter(visitor, report):
         try:
             ret = visitor(node)
             assert ret is None, 'visitor should raise an exception, not return a value'
-        except warnings.LintWarning, warning:
+        except lintwarnings.LintWarning, warning:
             # TODO: This is ugly hardcoding to improve the error positioning of
             # "missing_semicolon" errors.
             if visitor.warning in ('missing_semicolon', 'missing_semicolon_for_lambda'):
