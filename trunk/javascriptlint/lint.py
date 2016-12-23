@@ -8,7 +8,6 @@ import fs
 import htmlparse
 import jsparse
 import lintwarnings
-import visitation
 import unittest
 import util
 
@@ -478,7 +477,7 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
             visitors[event][kind] = [_getreporter(callback, report) for callback in callbacks]
 
     # Push the scope/variable checks.
-    visitation.make_visitors(visitors, [_get_scope_checks(script_cache.scope, report)])
+    _get_scope_checks(visitors, script_cache.scope, report)
 
     # kickoff!
     _lint_node(root, visitors)
@@ -582,43 +581,44 @@ def _warn_or_declare(scope, name, type_, node, report):
     else:
         scope.add_declaration(name, node, type_)
 
-def _get_scope_checks(scope, report):
+def _get_scope_checks(visitors, scope, report):
     scopes = [scope]
 
-    class scope_checks:
-        """ This is a non-standard visitation class to track scopes. The
-            docstring is unused since this class never throws lint errors.
-        """
-        @visitation.visit('push', tok.NAME)
-        def _name(self, node):
-            if node.node_index == 0 and node.parent.kind == tok.COLON and node.parent.parent.kind == tok.RC:
-                return # left side of object literal
-            if node.parent.kind == tok.VAR:
-                _warn_or_declare(scopes[-1], node.atom, 'var', node, report)
-                return
-            if node.parent.kind == tok.CATCH:
-                scopes[-1].add_declaration(node.atom, node, 'var')
-            scopes[-1].add_reference(node.atom, node)
+    def _visit(event, *args):
+        def _decorate(fn):
+            for arg in args:
+                visitors.setdefault(event, {}).setdefault(arg, []).append(fn)
+            return fn
+        return _decorate
 
-        @visitation.visit('push', tok.FUNCTION)
-        def _push_func(self, node):
-            if node.opcode in (None, op.CLOSURE) and node.fn_name:
-                _warn_or_declare(scopes[-1], node.fn_name, 'function', node, report)
-            self._push_scope(node)
-            for var_name in node.fn_args:
-                if scopes[-1].has_property(var_name.atom):
-                    report(var_name, 'duplicate_formal', name=var_name.atom)
-                scopes[-1].add_declaration(var_name.atom, var_name, 'arg')
+    @_visit('push', tok.NAME)
+    def _push_name(node):
+        if node.node_index == 0 and node.parent.kind == tok.COLON and node.parent.parent.kind == tok.RC:
+            return # left side of object literal
+        if node.parent.kind == tok.VAR:
+            _warn_or_declare(scopes[-1], node.atom, 'var', node, report)
+            return
+        if node.parent.kind == tok.CATCH:
+            scopes[-1].add_declaration(node.atom, node, 'var')
+        scopes[-1].add_reference(node.atom, node)
 
-        @visitation.visit('push', tok.LEXICALSCOPE, tok.WITH)
-        def _push_scope(self, node):
-            scopes.append(scopes[-1].add_scope(node))
+    @_visit('push', tok.FUNCTION)
+    def _push_func(node):
+        if node.opcode in (None, op.CLOSURE) and node.fn_name:
+            _warn_or_declare(scopes[-1], node.fn_name, 'function', node, report)
+        _push_scope(node)
+        for var_name in node.fn_args:
+            if scopes[-1].has_property(var_name.atom):
+                report(var_name, 'duplicate_formal', name=var_name.atom)
+            scopes[-1].add_declaration(var_name.atom, var_name, 'arg')
 
-        @visitation.visit('pop', tok.FUNCTION, tok.LEXICALSCOPE, tok.WITH)
-        def _pop_scope(self, node):
-            scopes.pop()
+    @_visit('push', tok.LEXICALSCOPE, tok.WITH)
+    def _push_scope(node):
+        scopes.append(scopes[-1].add_scope(node))
 
-    return scope_checks
+    @_visit('pop', tok.FUNCTION, tok.LEXICALSCOPE, tok.WITH)
+    def _pop_scope(node):
+        scopes.pop()
 
 
 def _lint_node(node, visitors):
