@@ -209,6 +209,14 @@ class _Script:
     def __init__(self):
         self._imports = set()
         self.scope = ScopeObject(None, None, 'scope')
+        self._ignores = []
+    def add_ignore(self, start, end):
+        self._ignores.append((start, end))
+    def should_ignore(self, offset):
+        for start, end in self._ignores:
+            if offset >= start and offset <= end:
+                return True
+        return False
     def importscript(self, script):
         self._imports.add(script)
     def hasglobal(self, name):
@@ -276,7 +284,20 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
             import_path = import_path.replace('\\', os.sep)
             import_path = os.path.join(os.path.dirname(path), import_path)
             return lint_file(import_path, 'js', jsversion, encoding)
-        def _lint_error(offset, errname, errdesc):
+
+        def report_lint(node, errname, offset=0, **errargs):
+            assert errname in lintwarnings.warnings, errname
+            if conf[errname]:
+                _report(offset or node.start_offset, errname, errargs)
+
+        def report_parse_error(offset, errname, errargs):
+            assert errname in lintwarnings.errors, errname
+            _report(offset, errname, errargs)
+
+        def _report(offset, errname, errargs):
+            errdesc = lintwarnings.format_error(errname, **errargs)
+            if lint_cache[normpath].should_ignore(offset):
+                return
             pos = node_positions.from_offset(offset)
             return lint_error(normpath, pos.line, pos.col, errname, errdesc)
 
@@ -316,7 +337,8 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
         else:
             assert False, 'Unsupported file kind: %s' % kind
 
-        _lint_script_parts(script_parts, lint_cache[normpath], _lint_error, conf, import_script)
+        _lint_script_parts(script_parts, lint_cache[normpath], report_lint, report_parse_error,
+                           conf, import_script)
         return lint_cache[normpath]
 
     lint_cache = {}
@@ -328,7 +350,7 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
             lint_file(path, 'js', None, encoding)
 
 def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
-                      ignores, report_parse_error, report_lint, import_callback):
+                      report_parse_error, report_lint, import_callback):
     def parse_error(offset, msg, msg_args):
         if not msg in ('anon_no_return_value', 'no_return_value',
                        'redeclared_var', 'var_hides_arg'):
@@ -432,7 +454,7 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
                     start_ignore = node
             elif keyword == 'end':
                 if start_ignore:
-                    ignores.append((start_ignore.start_offset, node.end_offset))
+                    script_cache.add_ignore(start_ignore.start_offset, node.end_offset)
                     start_ignore = None
                 else:
                     report(node, 'mismatch_ctrl_comments')
@@ -501,28 +523,11 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
     for node in jsparse.find_trailing_whitespace(script, script_offset):
         report(node, 'trailing_whitespace')
 
-def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
-    def report_lint(node, errname, offset=0, **errargs):
-        assert errname in lintwarnings.warnings, errname
-        if conf[errname]:
-            _report(offset or node.start_offset, errname, errargs)
-
-    def report_parse_error(offset, errname, errargs):
-        assert errname in lintwarnings.errors, errname
-        _report(offset, errname, errargs)
-
-    def _report(offset, errname, errargs):
-        errdesc = lintwarnings.format_error(errname, **errargs)
-
-        for start, end in ignores:
-            if offset >= start and offset <= end:
-                return
-
-        return lint_error(offset, errname, errdesc)
+def _lint_script_parts(script_parts, script_cache, report_lint, report_parse_error, conf,
+                       import_callback):
 
     for script_offset, jsversion, script in script_parts:
-        ignores = []
-        _lint_script_part(script_offset, jsversion, script, script_cache, conf, ignores,
+        _lint_script_part(script_offset, jsversion, script, script_cache, conf,
                           report_parse_error, report_lint, import_callback)
 
     scope = script_cache.scope
