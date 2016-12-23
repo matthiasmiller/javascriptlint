@@ -328,7 +328,7 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
             lint_file(path, 'js', None, encoding)
 
 def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
-                      ignores, report_native, report_lint, import_callback):
+                      ignores, report_parse_error, report_lint, import_callback):
     def parse_error(offset, msg, msg_args):
         if not msg in ('anon_no_return_value', 'no_return_value',
                        'redeclared_var', 'var_hides_arg'):
@@ -401,7 +401,7 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
     if not root:
         # Report errors and quit.
         for offset, msg, msg_args in parse_errors:
-            report_native(offset, msg, msg_args)
+            report_parse_error(offset, msg, msg_args)
         return
 
     comments = jsparse.filtercomments(possible_comments, root)
@@ -465,7 +465,7 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
 
     # Wait to report parse errors until loading jsl:ignore directives.
     for offset, msg in parse_errors:
-        report_native(offset, msg)
+        report_parse_error(offset, msg)
 
     # Find all visitors and convert them into "onpush" callbacks that call "report"
     visitors = {
@@ -503,20 +503,16 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
 
 def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_callback):
     def report_lint(node, errname, offset=0, **errargs):
-        errdesc = lintwarnings.format_error(errname, **errargs)
-        _report(offset or node.start_offset, errname, errdesc, True)
+        assert errname in lintwarnings.warnings, errname
+        if conf[errname]:
+            _report(offset or node.start_offset, errname, errargs)
 
-    def report_native(offset, errname, errargs):
-        errdesc = lintwarnings.format_error(errname, **errargs)
-        _report(offset, errname, errdesc, False)
+    def report_parse_error(offset, errname, errargs):
+        assert errname in lintwarnings.errors, errname
+        _report(offset, errname, errargs)
 
-    def _report(offset, errname, errdesc, require_key):
-        try:
-            if not conf[errname]:
-                return
-        except KeyError, err:
-            if require_key:
-                raise
+    def _report(offset, errname, errargs):
+        errdesc = lintwarnings.format_error(errname, **errargs)
 
         for start, end in ignores:
             if offset >= start and offset <= end:
@@ -527,7 +523,7 @@ def _lint_script_parts(script_parts, script_cache, lint_error, conf, import_call
     for script_offset, jsversion, script in script_parts:
         ignores = []
         _lint_script_part(script_offset, jsversion, script, script_cache, conf, ignores,
-                          report_native, report_lint, import_callback)
+                          report_parse_error, report_lint, import_callback)
 
     scope = script_cache.scope
     identifier_warnings = scope.get_identifier_warnings()
