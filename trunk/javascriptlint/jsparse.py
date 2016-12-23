@@ -58,8 +58,6 @@ def parse(script, jsversion, error_callback, start_offset=0):
     assert not start_offset is None
     jsversion = jsversion or JSVersion.default()
     assert isvalidversion(jsversion), jsversion
-    if jsversion.e4x:
-        error_callback(start_offset, 'e4x_deprecated', {})
     return jsengine.parser.parse(script, jsversion.version,
                                  error_callback, start_offset)
 
