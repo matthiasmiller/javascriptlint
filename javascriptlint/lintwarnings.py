@@ -20,7 +20,6 @@ import sys
 import types
 
 import util
-import visitation
 
 from jsengine.parser import kind as tok
 from jsengine.parser import op
