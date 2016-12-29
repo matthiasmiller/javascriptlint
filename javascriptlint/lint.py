@@ -556,7 +556,8 @@ def _getreporter(visitor, report):
         except lintwarnings.LintWarning, warning:
             # TODO: This is ugly hardcoding to improve the error positioning of
             # "missing_semicolon" errors.
-            if visitor.warning in ('missing_semicolon', 'missing_semicolon_for_lambda'):
+            if visitor.warning in ('missing_semicolon', 'missing_semicolon_for_lambda',
+                                   'trailing_comma', 'trailing_comma_in_array'):
                 offset = warning.node.end_offset
             else:
                 offset = None

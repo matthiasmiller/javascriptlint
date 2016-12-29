@@ -13,4 +13,9 @@ function trailing_comma_in_array() {
         2,
         3, /*warning:trailing_comma_in_array*/
     ];
+    a = [
+        {
+            prop: 1
+        }, /*warning:trailing_comma_in_array*/
+    ];
 }
