@@ -1,3 +1,4 @@
+/*conf:-duplicate_property*/
 function ambiguous_numeric_prop() {
     var a = {
         1: '',
