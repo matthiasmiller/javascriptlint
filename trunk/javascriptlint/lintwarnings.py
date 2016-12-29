@@ -104,6 +104,7 @@ warnings = {
     'function_name_mismatch': 'function name {fn_name} does not match property name {prop_name}',
     'trailing_whitespace': 'trailing whitespace',
     'e4x_deprecated': 'e4x is deprecated',
+    'ambiguous_numeric_prop': 'numeric property should be normalized; use {normalized}',
 }
 
 errors = {
@@ -633,6 +634,20 @@ def for_in_missing_identifier(node):
     left, right = node.kids[0].kids
     if not left.kind in (tok.VAR, tok.NAME):
         raise LintWarning(left)
+
+@lookfor(tok.NUMBER)
+def ambiguous_numeric_prop(node):
+    if node.atom.startswith('0x'):
+        value = int(node.atom, 16)
+    else:
+        value = float(node.atom)
+        if value.is_integer():
+            value = int(value)
+
+    if (node.node_index == 0 and node.parent.kind == tok.COLON) or \
+            (node.node_index == 1 and node.parent.kind == tok.LB):
+        if str(value) != node.atom:
+            raise LintWarning(node, normalized=str(value))
 
 @lookfor(tok.FUNCTION)
 def misplaced_function(node):
