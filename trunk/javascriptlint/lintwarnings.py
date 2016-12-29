@@ -19,6 +19,7 @@ import re
 
 import util
 
+from jsengine import js_util
 from jsengine.parser import kind as tok
 from jsengine.parser import op
 
@@ -636,44 +637,22 @@ def for_in_missing_identifier(node):
     if not left.kind in (tok.VAR, tok.NAME):
         raise LintWarning(left)
 
-def _normalized_number(node):
-    assert node.kind == tok.NUMBER
-    if node.atom.startswith('0x'):
-        value = int(node.atom, 16)
-    else:
-        value = float(node.atom)
-        if value.is_integer():
-            value = int(value)
-    return str(value)
-
 @lookfor(tok.NUMBER)
 def ambiguous_numeric_prop(node):
-    normalized = _normalized_number(node)
+    normalized = js_util.numeric_property_str(node)
     if (node.node_index == 0 and node.parent.kind == tok.COLON) or \
             (node.node_index == 1 and node.parent.kind == tok.LB):
         if normalized != node.atom:
             raise LintWarning(node, normalized=normalized)
-
-def _object_property(node):
-    assert node.kind == tok.COLON
-
-    left, right = node.kids
-    while left.kind == tok.RP:
-        left, = left.kids
-    if left.kind == tok.NUMBER:
-        return _normalized_number(left)
-
-    assert left.kind in (tok.STRING, tok.NAME)
-    return left.atom
 
 @lookfor(tok.COLON)
 def duplicate_property(node):
     if not node.parent.kind == tok.RC:
         return
 
-    node_value = _object_property(node)
+    node_value = js_util.object_property_str(node)
     for sibling in node.parent.kids[:node.node_index]:
-        sibling_value = _object_property(sibling)
+        sibling_value = js_util.object_property_str(sibling)
         if node_value == sibling_value:
             raise LintWarning(node)
 
