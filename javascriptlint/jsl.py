@@ -17,7 +17,7 @@ import util
 import version
 
 _lint_results = {
-    'warnings': 0,
+    'warning': 0,
     'errors': 0
 }
 
@@ -26,8 +26,9 @@ def _dump(paths, encoding):
         script = fs.readfile(path, encoding)
         jsparse.dump_tree(script)
 
-def _lint_warning(conf_, path, line, col, errname, errdesc):
-    _lint_results['warnings'] = _lint_results['warnings'] + 1
+def _lint_warning(conf_, path, line, col, msg_type, errname, errdesc):
+    assert msg_type in ('warning', 'error')
+    _lint_results[msg_type] += 1
     print util.format_error(conf_['output-format'], path, line, col,
                                   errname, errdesc)
 
@@ -120,7 +121,7 @@ def _main():
         try:
             conf_.loadfile(options.conf)
         except conf.ConfError, error:
-            _lint_warning(conf_, error.path, error.lineno, 0, 'conf_error',
+            _lint_warning(conf_, error.path, error.lineno, 0, 'error', 'conf_error',
                           unicode(error))
 
     profile_func = _profile_disabled
@@ -151,12 +152,12 @@ def _main():
         profile_func(_lint, paths, conf_, options.printlisting, options.encoding)
 
     if options.printsummary:
-        print '\n%i error(s), %i warnings(s)' % (_lint_results['errors'],
-                                                 _lint_results['warnings'])
+        print '\n%i error(s), %i warnings(s)' % (_lint_results['error'],
+                                                 _lint_results['warning'])
 
-    if _lint_results['errors']:
+    if _lint_results['error']:
         sys.exit(3)
-    if _lint_results['warnings']:
+    if _lint_results['warning']:
         sys.exit(1)
     sys.exit(0)
 

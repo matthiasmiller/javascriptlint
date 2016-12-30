@@ -33,15 +33,15 @@ def _get_expected_warnings(script):
     "returns an array of tuples -- line, warning"
     warnings = []
 
-    regexp = re.compile(r"/\*warning:([^*]*)\*/")
+    regexp = re.compile(r"/\*(error|warning):([^*]*)\*/")
 
     lines = script.splitlines()
     for i in range(0, len(lines)):
-        for warning in regexp.findall(lines[i]):
+        for msg_type, warning in regexp.findall(lines[i]):
             # TODO: implement these
             unimpl_warnings = ('dup_option_explicit',)
             if not warning in unimpl_warnings:
-                warnings.append((i, warning))
+                warnings.append((i, msg_type, warning))
     return warnings
 
 def _testfile(path):
@@ -51,13 +51,13 @@ def _testfile(path):
     unexpected_warnings = []
     conf = _get_conf(script)
 
-    def lint_error(path, line, col, errname, errdesc):
-        warning = (line, errname)
+    def lint_error(path, line, col, msg_type, errname, errdesc):
+        warning = (line, msg_type, errname)
 
         # Bad hack to fix line numbers on ambiguous else statements
         # TODO: Fix tests.
         if errname == 'ambiguous_else_stmt' and not warning in expected_warnings:
-            warning = (line-1, errname)
+            warning = (line-1, msg_type, errname)
 
         if warning in expected_warnings:
             expected_warnings.remove(warning)
@@ -69,11 +69,11 @@ def _testfile(path):
     errors = []
     if expected_warnings:
         errors.append('Expected warnings:')
-        for line, warning in expected_warnings:
+        for line, msg_type, warning in expected_warnings:
             errors.append('\tline %i: %s' % (line+1, warning))
     if unexpected_warnings:
         errors.append('Unexpected warnings:')
-        for line, warning, errdesc in unexpected_warnings:
+        for line, msg_type, warning, errdesc in unexpected_warnings:
             errors.append('\tline %i: %s/%s' % (line+1, warning, errdesc))
     if errors:
         raise TestError('\n'.join(errors))

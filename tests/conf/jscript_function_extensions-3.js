@@ -23,5 +23,5 @@ function conf.jscript_function_extensions::onunload() {
     this.val = null;
 }
 
-function conf.jscript_function_extensions..ok(val) { /*warning:syntax_error*/
+function conf.jscript_function_extensions..ok(val) { /*error:syntax_error*/
 }
