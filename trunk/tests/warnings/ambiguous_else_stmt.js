@@ -16,6 +16,6 @@ function ambiguous_else_stmt() {
                 while (j) /*warning:ambiguous_nested_stmt*/
                     if (y) /*warning:ambiguous_nested_stmt*/
                         y--;
-        else /*warning:ambiguous_else_stmt*/
-            y++;
+        else
+            y++; /*warning:ambiguous_else_stmt*/
 }

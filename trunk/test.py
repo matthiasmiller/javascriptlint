@@ -53,12 +53,6 @@ def _testfile(path):
 
     def lint_error(path, line, col, msg_type, errname, errdesc):
         warning = (line, msg_type, errname)
-
-        # Bad hack to fix line numbers on ambiguous else statements
-        # TODO: Fix tests.
-        if errname == 'ambiguous_else_stmt' and not warning in expected_warnings:
-            warning = (line-1, msg_type, errname)
-
         if warning in expected_warnings:
             expected_warnings.remove(warning)
         else:
