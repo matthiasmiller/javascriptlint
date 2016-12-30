@@ -1,4 +1,4 @@
 function syntax_error() {
-    &; /*warning:syntax_error*/
+    &; /*error:syntax_error*/
 }
 

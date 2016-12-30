@@ -288,18 +288,18 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
         def report_lint(node, errname, offset=0, **errargs):
             assert errname in lintwarnings.warnings, errname
             if conf[errname]:
-                _report(offset or node.start_offset, errname, errargs)
+                _report(offset or node.start_offset, 'warning', errname, errargs)
 
         def report_parse_error(offset, errname, errargs):
             assert errname in lintwarnings.errors, errname
-            _report(offset, errname, errargs)
+            _report(offset, 'error', errname, errargs)
 
-        def _report(offset, errname, errargs):
+        def _report(offset, msg_type, errname, errargs):
             errdesc = lintwarnings.format_error(errname, **errargs)
             if lint_cache[normpath].should_ignore(offset):
                 return
             pos = node_positions.from_offset(offset)
-            return lint_error(normpath, pos.line, pos.col, errname, errdesc)
+            return lint_error(normpath, pos.line, pos.col, msg_type, errname, errdesc)
 
         normpath = fs.normpath(path)
         if normpath in lint_cache:
