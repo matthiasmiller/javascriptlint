@@ -188,6 +188,18 @@ class ConfSetting(Setting):
         self._conf.loadfile(parm)
         self.value = parm
 
+class IncludeDirSetting(Setting):
+    wants_parm = True
+    wants_dir = True
+    def __init__(self):
+        self.value = []
+    def load(self, enabled, parm, dir):
+        if not dir:
+            raise ConfError('The %s setting is only valid in a configuration file.' % parm)
+
+        abs_dir = os.path.abspath(os.path.join(dir, parm))
+        self.value.append(abs_dir)
+
 class Conf:
     def __init__(self):
         recurse = BooleanSetting(False)
@@ -203,6 +215,7 @@ class Conf:
             'process': ProcessSetting(recurse),
             'default-version': JSVersionSetting(),
             'conf': ConfSetting(self),
+            'include-dir': IncludeDirSetting(),
             # SpiderMonkey warnings
             'no_return_value': BooleanSetting(True),
             'equal_as_assign': BooleanSetting(True),

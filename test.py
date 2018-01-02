@@ -21,12 +21,12 @@ _DEFAULT_CONF = """
 class TestError(Exception):
     pass
 
-def _get_conf(script):
+def _get_conf(script, script_dir):
     regexp = re.compile(r"/\*conf:([^*]*)\*/")
     text = '\n'.join(regexp.findall(script))
     conf = javascriptlint.conf.Conf()
-    conf.loadtext(_DEFAULT_CONF)
-    conf.loadtext(text)
+    conf.loadtext(_DEFAULT_CONF, script_dir)
+    conf.loadtext(text, script_dir)
     return conf
 
 def _get_expected_warnings(script):
@@ -45,11 +45,14 @@ def _get_expected_warnings(script):
     return warnings
 
 def _testfile(path):
+    script_dir = os.path.dirname(path)
+    assert os.path.isabs(script_dir)
+
     # Parse the script and find the expected warnings.
     script = open(path).read()
     expected_warnings = _get_expected_warnings(script)
     unexpected_warnings = []
-    conf = _get_conf(script)
+    conf = _get_conf(script, script_dir)
 
     def lint_error(path, line, col, msg_type, errname, errdesc):
         warning = (line, msg_type, errname)
