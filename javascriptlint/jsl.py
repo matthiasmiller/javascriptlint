@@ -77,9 +77,8 @@ def _main():
     add = parser.add_option
     add("--conf", dest="conf", metavar="CONF",
         help="set the conf file")
-    if hotshot is not None:
-        add("--profile", dest="profile", action="store_true", default=False,
-            help="turn on hotshot profiling")
+    add("--profile", dest="profile", action="store_true", default=False,
+        help="turn on hotshot profiling" if hotshot is not None else optparse.SUPPRESS_HELP)
     add("--recurse", dest="recurse", action="store_true", default=False,
         help="recursively search directories on the command line")
     if os.name == 'nt':
