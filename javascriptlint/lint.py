@@ -311,7 +311,7 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
         try:
             contents = fs.readfile(path, encoding)
         except IOError, error:
-            lint_error(normpath, 0, 0, 'io_error', unicode(error))
+            lint_error(normpath, 0, 0, 'error', 'io_error', unicode(error))
             return lint_cache[normpath]
         node_positions = jsparse.NodePositions(contents)
 
