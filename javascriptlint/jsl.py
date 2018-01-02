@@ -1,11 +1,17 @@
 #!/usr/bin/python
 # vim: ts=4 sw=4 expandtab
+try:
+    import hotshot
+    import hotshot.stats
+except ImportError:
+    hotshot = None
 import fnmatch
 import functools
+import optparse
 import os
 import sys
+import tempfile
 import unittest
-from optparse import OptionParser
 
 import conf
 import fs
@@ -56,9 +62,6 @@ def printlogo():
     print "Developed by Matthias Miller (http://www.JavaScriptLint.com)"
 
 def _profile_enabled(func, *args, **kwargs):
-    import tempfile
-    import hotshot
-    import hotshot.stats
     handle, filename = tempfile.mkstemp()
     profile = hotshot.Profile(filename)
     profile.runcall(func, *args, **kwargs)
@@ -70,12 +73,13 @@ def _profile_disabled(func, *args, **kwargs):
     func(*args, **kwargs)
 
 def _main():
-    parser = OptionParser(usage="%prog [options] [files]")
+    parser = optparse.OptionParser(usage="%prog [options] [files]")
     add = parser.add_option
     add("--conf", dest="conf", metavar="CONF",
         help="set the conf file")
-    add("--profile", dest="profile", action="store_true", default=False,
-        help="turn on hotshot profiling")
+    if hotshot is not None:
+        add("--profile", dest="profile", action="store_true", default=False,
+            help="turn on hotshot profiling")
     add("--recurse", dest="recurse", action="store_true", default=False,
         help="recursively search directories on the command line")
     if os.name == 'nt':
@@ -85,9 +89,9 @@ def _main():
         add("--enable-wildcards", dest="wildcards", action="store_true",
             default=False, help="resolve wildcards in the command line")
     add("--dump", dest="dump", action="store_true", default=False,
-        help="dump this script")
+        help="dump this script" if not hasattr(sys, 'frozen') else optparse.SUPPRESS_HELP)
     add("--unittest", dest="unittest", action="store_true", default=False,
-        help="run the python unittests")
+        help="run the python unittests" if not hasattr(sys, 'frozen') else optparse.SUPPRESS_HELP)
     add("--quiet", dest="verbosity", action="store_const", const=0,
         help="minimal output")
     add("--verbose", dest="verbosity", action="store_const", const=2,
