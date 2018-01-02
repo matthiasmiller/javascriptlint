@@ -251,6 +251,7 @@ def _findhtmlscripts(contents, default_version):
                     yield {
                         'type': 'external',
                         'jsversion': jsversion,
+                        'offset': tag['offset'],
                         'src': src,
                     }
         elif tag['type'] == 'end':
@@ -278,12 +279,18 @@ def _findhtmlscripts(contents, default_version):
 
 def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
     def lint_file(path, kind, jsversion, encoding):
-        def import_script(import_path, jsversion):
+        def import_script(offset, import_path, jsversion):
             # The user can specify paths using backslashes (such as when
             # linting Windows scripts on a posix environment.
             import_path = import_path.replace('\\', os.sep)
             import_path = os.path.join(os.path.dirname(path), import_path)
-            return lint_file(import_path, 'js', jsversion, encoding)
+            if os.path.isfile(import_path):
+                return lint_file(import_path, 'js', jsversion, encoding)
+
+            _report(offset, 'error', 'io_error', {
+                'error': 'The file could not be found: %s' % import_path
+            })
+            return _Script()
 
         def report_lint(node, errname, offset=0, **errargs):
             assert errname in lintwarnings.warnings, errname
@@ -326,7 +333,7 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
                     continue
 
                 if script['type'] == 'external':
-                    other = import_script(script['src'], script['jsversion'])
+                    other = import_script(script['offset'], script['src'], script['jsversion'])
                     lint_cache[normpath].importscript(other)
                 elif script['type'] == 'inline':
                     script_parts.append((script['offset'], script['jsversion'],
@@ -460,7 +467,7 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
                 if not parms:
                     report(node, 'jsl_cc_not_understood')
                 else:
-                    import_paths.append(parms)
+                    import_paths.append((node.start_offset, parms))
             elif keyword == 'fallthru':
                 fallthrus.append(node)
             elif keyword == 'pass':
@@ -503,8 +510,8 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
         report(fallthru, 'invalid_pass')
 
     # Process imports by copying global declarations into the universal scope.
-    for path in import_paths:
-        script_cache.importscript(import_callback(path, jsversion))
+    for offset, path in import_paths:
+        script_cache.importscript(import_callback(offset, path, jsversion))
 
     for name, node in declares:
         declare_scope = script_cache.scope.find_scope(node)
