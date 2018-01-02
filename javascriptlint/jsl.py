@@ -18,7 +18,7 @@ import version
 
 _lint_results = {
     'warning': 0,
-    'errors': 0
+    'error': 0
 }
 
 def _dump(paths, encoding):
