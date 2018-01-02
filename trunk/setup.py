@@ -47,9 +47,22 @@ def _setup():
             console = ['jsl'],
             options = {
                 'py2exe': {
-                    'excludes': ['resource'],
+                    'excludes': [
+                        'resource',
+                        'bz2',
+                        '_ssl',
+                        '_hashlib',
+                        'socket',
+                        'select'
+                    ],
                     'bundle_files': 1,
                     'optimize': 1, # requires 1 to preserve docstrings
+                    'dll_excludes': [
+                        'mswsock.dll',
+                        'powrprof.dll',
+                        'CRYPT32.dll'
+                    ]
+
                 }
             },
             zipfile = None
