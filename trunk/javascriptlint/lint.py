@@ -283,12 +283,14 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
             # The user can specify paths using backslashes (such as when
             # linting Windows scripts on a posix environment.
             import_path = import_path.replace('\\', os.sep)
-            import_path = os.path.join(os.path.dirname(path), import_path)
-            if os.path.isfile(import_path):
-                return lint_file(import_path, 'js', jsversion, encoding)
+            include_dirs = [os.path.dirname(path)] + conf['include-dir']
+            for include_dir in include_dirs:
+                abs_path = os.path.join(include_dir, import_path)
+                if os.path.isfile(abs_path):
+                    return lint_file(abs_path, 'js', jsversion, encoding)
 
             _report(offset, 'error', 'io_error', {
-                'error': 'The file could not be found: %s' % import_path
+                'error': 'The file could not be found in any include paths: %s' % import_path
             })
             return _Script()
 
