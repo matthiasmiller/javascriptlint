@@ -53,7 +53,8 @@ def _setup():
                         '_ssl',
                         '_hashlib',
                         'socket',
-                        'select'
+                        'select',
+                        'hotshot',
                     ],
                     'bundle_files': 1,
                     'optimize': 1, # requires 1 to preserve docstrings
