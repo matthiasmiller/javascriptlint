@@ -17,4 +17,19 @@ function useless_assign() {
     for (; ; i = i) { /*warning:useless_assign*/
         i++;
     }
+
+    // These could conceivably be meaningful.
+    i *= i;
+    i += i;
+    i >>= i;
+    i <<= i;
+    i >>>= i;
+
+    // These make no sense.
+    i /= i; /*warning:useless_assign*/
+    i -= i; /*warning:useless_assign*/
+    i %= i; /*warning:useless_assign*/
+    i &= i; /*warning:useless_assign*/
+    i |= i; /*warning:useless_assign*/
+    i ^= i; /*warning:useless_assign*/
 }

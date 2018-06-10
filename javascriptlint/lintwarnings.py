@@ -473,11 +473,14 @@ def multiple_plus_minus_(node):
 
 @lookfor((tok.NAME, op.SETNAME))
 def useless_assign(node):
-    if node.parent.kind == tok.ASSIGN:
+    if node.parent.kind == tok.ASSIGN and node.parent.opcode not in (op.MUL, op.ADD, op.LSH,
+                                                                     op.RSH, op.URSH):
         assert node.node_index == 0
         value = node.parent.kids[1]
     elif node.parent.kind == tok.VAR:
         value = node.kids[0]
+    else:
+        value = None
     if value and value.kind == tok.NAME and node.atom == value.atom:
         raise LintWarning(node)
 
