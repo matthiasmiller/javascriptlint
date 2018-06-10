@@ -7,6 +7,6 @@ function for_in_missing_identifier(o) {
     for (var prop2 in o)
         o[prop2]++;
 
-    for (!prop in o) /*warning:for_in_missing_identifier*/ /*warning:ambiguous_not*/
+    for (!prop in o) /*warning:for_in_missing_identifier*/ /*warning:unexpected_not*/
         o[prop]++;
 }
