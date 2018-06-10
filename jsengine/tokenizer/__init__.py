@@ -215,10 +215,16 @@ class Tokenizer:
                     return Token(tok.ERROR)
             elif c == _Char.ord('['):
                 while True:
+                    # Handle escaped characters, but don't allow line breaks after the escape.
                     c = stream.readchr()
+                    escaped = False
+                    if c == _Char.ord('\\'):
+                        c = stream.readchr()
+                        escaped = True
+
                     if c == _Char.ord('\n'):
                         return Token(tok.ERROR)
-                    elif c == _Char.ord(']'):
+                    elif c == _Char.ord(']') and not escaped:
                         break
             elif c == _Char.ord('\n'):
                 return Token(tok.ERROR)
