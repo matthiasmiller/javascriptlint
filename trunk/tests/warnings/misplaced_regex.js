@@ -21,6 +21,9 @@ function misplaced_regex() {
     i += /\/\./; /*warning:misplaced_regex*/
     i = -/.*/; /*warning:misplaced_regex*/
 
+    /* legal usage */
+    var validity = /[^\[\]/]/g;
+
     /* legal usage: return */
     return /\/\./;
 }

@@ -853,6 +853,15 @@ class TestParser(unittest.TestCase):
             self.assertEqual(error.offset, 5)
         else:
             self.assert_(False)
+        try:
+            # Do not allow after an escape sequence, either.
+            parsestring('re = /[\\\n');
+        except JSSyntaxError as error:
+            self.assertEqual(error.offset, 5)
+        else:
+            self.assert_(False)
+    def testRegExpBugReport(self):
+        parsestring('validity = /[^\[\]/]/g')
     def testUnterminatedComment(self):
         try:
             parsestring('/*')
