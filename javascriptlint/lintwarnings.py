@@ -107,7 +107,8 @@ warnings = {
     'e4x_deprecated': 'e4x is deprecated',
     'ambiguous_numeric_prop': 'numeric property should be normalized; use {normalized}',
     'duplicate_property': 'duplicate property in object initializer',
-    'unexpected_not': 'the ! operator is unexpected; use clarifying parentheses'
+    'unexpected_not_for_in': 'the ! operator is unexpected; add clarifying parentheses',
+    'unexpected_not_comparison': 'the ! operator is unexpected; add clarifying parentheses or compare against !!',
 }
 
 errors = {
@@ -688,13 +689,32 @@ def misplaced_function(node):
     raise LintWarning(node)
 
 @lookfor((tok.UNARYOP, op.NOT))
-def unexpected_not(node):
+def unexpected_not_for_in(node):
     # Avoid for(!s in o)
     if node.parent and node.parent.kind == tok.IN:
         raise LintWarning(node)
 
+@lookfor((tok.UNARYOP, op.NOT))
+def unexpected_not_comparison(node):
     # Avoid use in comparisons.
-    if node.parent and node.parent.kind in (tok.EQOP, tok.RELOP):
+    if node.parent and node.parent.kind == tok.RELOP:
+        raise LintWarning(node)
+
+    if node.parent and node.parent.kind == tok.EQOP:
+        # Allow !!
+        kid, = node.kids
+        if kid.kind == tok.UNARYOP and kid.opcode == op.NOT:
+            return
+
+        # Allow when compared against !
+        for i, kid in enumerate(node.parent.kids):
+            if i == node.node_index:
+                continue
+            if kid.kind != tok.UNARYOP or kid.opcode != op.NOT:
+                break
+        else:
+            return
+
         raise LintWarning(node)
 
 def _get_function_property_name(node):
