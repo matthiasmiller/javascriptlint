@@ -113,8 +113,9 @@ def _dump_node(node, node_positions, depth=0):
         print '     '*depth,
         print '%s, %s' % (repr(node.kind), repr(node.opcode))
         print '     '*depth,
-        print '%s - %s' % (node_positions.from_offset(node.start_offset),
-                           node_positions.from_offset(node.end_offset))
+        if node.kind != tok.RESERVED:
+            print '%s - %s' % (node_positions.from_offset(node.start_offset),
+                               node_positions.from_offset(node.end_offset))
         if hasattr(node, 'atom'):
             print '     '*depth,
             print 'atom: %s' % node.atom
