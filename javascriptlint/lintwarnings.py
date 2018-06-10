@@ -107,7 +107,7 @@ warnings = {
     'e4x_deprecated': 'e4x is deprecated',
     'ambiguous_numeric_prop': 'numeric property should be normalized; use {normalized}',
     'duplicate_property': 'duplicate property in object initializer',
-    'ambiguous_not': 'the ! operator is ambiguous; use clarifying parentheses'
+    'unexpected_not': 'the ! operator is unexpected; use clarifying parentheses'
 }
 
 errors = {
@@ -688,7 +688,7 @@ def misplaced_function(node):
     raise LintWarning(node)
 
 @lookfor((tok.UNARYOP, op.NOT))
-def ambiguous_not(node):
+def unexpected_not(node):
     # Avoid for(!s in o)
     if node.parent and node.parent.kind == tok.IN:
         raise LintWarning(node)
