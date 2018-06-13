@@ -107,7 +107,7 @@ warnings = {
     'e4x_deprecated': 'e4x is deprecated',
     'ambiguous_numeric_prop': 'numeric property should be normalized; use {normalized}',
     'duplicate_property': 'duplicate property in object initializer',
-    'unexpected_not_for_in': 'the ! operator is unexpected; add clarifying parentheses',
+    'unexpected_not_in': 'the ! operator is unexpected; add clarifying parentheses',
     'unexpected_not_comparison': 'the ! operator is unexpected; add clarifying parentheses or compare against !!',
 }
 
@@ -692,7 +692,7 @@ def misplaced_function(node):
     raise LintWarning(node)
 
 @lookfor((tok.UNARYOP, op.NOT))
-def unexpected_not_for_in(node):
+def unexpected_not_in(node):
     # Avoid for(!s in o)
     if node.parent and node.parent.kind == tok.IN:
         raise LintWarning(node)
