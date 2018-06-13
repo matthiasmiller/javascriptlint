@@ -108,7 +108,7 @@ warnings = {
     'ambiguous_numeric_prop': 'numeric property should be normalized; use {normalized}',
     'duplicate_property': 'duplicate property in object initializer',
     'unexpected_not_in': 'the ! operator is unexpected; add clarifying parentheses',
-    'unexpected_not_comparison': 'the ! operator is unexpected; add clarifying parentheses or compare against !!',
+    'unexpected_not_comparison': 'the ! operator is unexpected; add clarifying parentheses or rewrite the comparison',
 }
 
 errors = {
