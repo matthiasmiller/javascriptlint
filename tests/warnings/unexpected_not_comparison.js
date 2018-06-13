@@ -18,10 +18,6 @@ function unexpected_not_comparison() {
         return false;
     }
 
-    if (!s in o) { /*warning:unexpected_not_for_in*/
-        return false;
-    }
-
     // Allow ! and !!
     if (!!i == b) {
         return false;
