@@ -10,7 +10,7 @@ _IDENT = 'abcdefghijklmnopqrstuvwxyz' + \
          'ABCDEFGHIJKLMNOPQRSTUVWXYZ' + \
          '$_'
 
-class _Char(object):
+class _Char:
     def __init__(self, u):
         assert isinstance(u, int) or u is None, u
         self._u = u

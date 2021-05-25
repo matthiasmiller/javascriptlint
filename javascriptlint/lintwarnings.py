@@ -760,7 +760,7 @@ def _get_expected_function_name(node, decorate):
     return name
 
 @lookfor_class(tok.FUNCTION)
-class FunctionNameMissing(object):
+class FunctionNameMissing:
     def __init__(self, conf):
         self._decorate = conf['decorate_function_name_warning']
 
@@ -773,7 +773,7 @@ class FunctionNameMissing(object):
             raise LintWarning(node, name=expected_name)
 
 @lookfor_class(tok.FUNCTION)
-class FunctionNameMismatch(object):
+class FunctionNameMismatch:
     def __init__(self, conf):
         self._decorate = conf['decorate_function_name_warning']
 

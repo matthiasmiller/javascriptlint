@@ -66,7 +66,7 @@ _KINDS = [
     'YIELD', # TODO
     'WHITESPACE',
 ]
-class _Kind(object):
+class _Kind:
     def __init__(self, name):
         self._name = name
 

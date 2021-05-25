@@ -1,7 +1,7 @@
 # vim: sw=4 ts=4 et
 _ALL_TOKENS = []
 
-class TokenType(object):
+class TokenType:
     def __init__(self, category, literal):
         self._category = category
         self._literal = literal
@@ -114,7 +114,7 @@ STRING = TokenType('other', '(str)')
 # Freeze the list of keywords
 _ALL_TOKENS = tuple(_ALL_TOKENS)
 
-class _Keywords(object):
+class _Keywords:
     def __init__(self):
         self._d = {}
         for tt in _ALL_TOKENS:
@@ -132,7 +132,7 @@ class _Keywords(object):
 
 keywords = _Keywords()
 
-class _Punctuators(object):
+class _Punctuators:
     def __init__(self):
         self._prefixes = {}
         self._punctuators = {}
