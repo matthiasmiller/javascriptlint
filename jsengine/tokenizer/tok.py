@@ -125,7 +125,7 @@ class _Keywords(object):
         return self._d.get(literal, default)
 
     def has(self, tok):
-        for iter in self._d.values():
+        for iter in list(self._d.values()):
             if iter == tok:
                 return True
         return False

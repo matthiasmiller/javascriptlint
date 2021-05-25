@@ -80,6 +80,9 @@ class _Op(object):
         assert isinstance(other, _Op), repr(other)
         return self is other
 
+    def __hash__(self):
+        return hash(self._name)
+
     def __repr__(self):
         return 'op.%s' % self._name
 

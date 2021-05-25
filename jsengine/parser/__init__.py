@@ -5,8 +5,8 @@ from jsengine.tokenizer import tok
 from jsengine import tokenizer
 
 from jsengine import JSSyntaxError
-from _constants_kind import kind
-from _constants_op import op
+from ._constants_kind import kind
+from ._constants_op import op
 
 from jsengine.structs import *
 
@@ -843,23 +843,23 @@ def is_compilable_unit(script, jsversion):
 
 class TestParser(unittest.TestCase):
     def testCompilableUnit(self):
-        self.assert_(is_compilable_unit('', 'default'))
-        self.assert_(is_compilable_unit('/**/', 'default'))
-        self.assert_(not is_compilable_unit('/*', 'default'))
+        self.assertTrue(is_compilable_unit('', 'default'))
+        self.assertTrue(is_compilable_unit('/**/', 'default'))
+        self.assertTrue(not is_compilable_unit('/*', 'default'))
     def testRegExpLineBreak(self):
         try:
             parsestring('re = /[\n');
         except JSSyntaxError as error:
             self.assertEqual(error.offset, 5)
         else:
-            self.assert_(False)
+            self.assertTrue(False)
         try:
             # Do not allow after an escape sequence, either.
             parsestring('re = /[\\\n');
         except JSSyntaxError as error:
             self.assertEqual(error.offset, 5)
         else:
-            self.assert_(False)
+            self.assertTrue(False)
     def testRegExpBugReport(self):
         parsestring('validity = /[^\[\]/]/g')
     def testUnterminatedComment(self):
@@ -868,37 +868,37 @@ class TestParser(unittest.TestCase):
         except JSSyntaxError as error:
             self.assertEqual(error.offset, 1)
         else:
-            self.assert_(False)
+            self.assertTrue(False)
     def testObjectEndComma(self):
         root = parsestring('a={a:1,}')
         node, = root.kids
-        self.assertEquals(node.kind, kind.SEMI)
+        self.assertEqual(node.kind, kind.SEMI)
         node, = node.kids
-        self.assertEquals(node.kind, kind.ASSIGN)
+        self.assertEqual(node.kind, kind.ASSIGN)
         left, right = node.kids
-        self.assertEquals(left.atom, 'a')
-        self.assertEquals(right.kind, kind.RC)
+        self.assertEqual(left.atom, 'a')
+        self.assertEqual(right.kind, kind.RC)
         node = right.end_comma
-        self.assertEquals(node.kind, kind.COMMA)
-        self.assertEquals(node.start_offset, 6)
-        self.assertEquals(node.end_offset, 6)
+        self.assertEqual(node.kind, kind.COMMA)
+        self.assertEqual(node.start_offset, 6)
+        self.assertEqual(node.end_offset, 6)
     def _testArrayEndComma(self, script, col):
         root = parsestring(script)
         node, = root.kids
-        self.assertEquals(node.kind, kind.SEMI)
+        self.assertEqual(node.kind, kind.SEMI)
         node, = node.kids
-        self.assertEquals(node.kind, kind.ASSIGN)
+        self.assertEqual(node.kind, kind.ASSIGN)
         left, right = node.kids
-        self.assertEquals(left.atom, 'a')
-        self.assertEquals(right.kind, kind.RB)
+        self.assertEqual(left.atom, 'a')
+        self.assertEqual(right.kind, kind.RB)
         node = right.end_comma
-        self.assertEquals(node is None, col is None)
+        self.assertEqual(node is None, col is None)
         if col is None:
-            self.assert_(node is None)
+            self.assertTrue(node is None)
         else:
-            self.assertEquals(node.kind, kind.COMMA)
-            self.assertEquals(node.start_offset, col)
-            self.assertEquals(node.end_offset, col)
+            self.assertEqual(node.kind, kind.COMMA)
+            self.assertEqual(node.start_offset, col)
+            self.assertEqual(node.end_offset, col)
     def testArrayEndComma(self):
         self._testArrayEndComma('a=[,]', 3)
         self._testArrayEndComma('a=[a,]', 4)
@@ -906,17 +906,17 @@ class TestParser(unittest.TestCase):
     def _testArrayCommas(self, script, items, end_comma):
         root = parsestring(script)
         node, = root.kids
-        self.assertEquals(node.kind, kind.SEMI)
+        self.assertEqual(node.kind, kind.SEMI)
         node, = node.kids
-        self.assertEquals(node.kind, kind.ASSIGN)
+        self.assertEqual(node.kind, kind.ASSIGN)
         left, right = node.kids
-        self.assertEquals(left.atom, 'a')
-        self.assertEquals(right.kind, kind.RB)
+        self.assertEqual(left.atom, 'a')
+        self.assertEqual(right.kind, kind.RB)
         node = right
-        self.assertEquals(len(node.kids), len(items))
+        self.assertEqual(len(node.kids), len(items))
         for kid, item in zip(node.kids, items):
-            self.assertEquals(kid.atom, item)
-        self.assertEquals(bool(node.end_comma), end_comma)
+            self.assertEqual(kid.atom, item)
+        self.assertEqual(bool(node.end_comma), end_comma)
     def testArrayCommas(self):
         self._testArrayCommas('a=[]', [], False)
         self._testArrayCommas('a=[,]', [None], True)
@@ -931,4 +931,4 @@ class TestParser(unittest.TestCase):
         except JSSyntaxError as error:
             pass
         else:
-            self.assert_(False)
+            self.assertTrue(False)

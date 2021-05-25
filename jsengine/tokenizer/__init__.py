@@ -1,14 +1,14 @@
 # vim: sw=4 ts=4 et
 from jsengine import JSSyntaxError
-import tok
+from . import tok
 
-_WHITESPACE = u'\u0020\t\u000B\u000C\u00A0\uFFFF'
-_LINETERMINATOR = u'\u000A\u000D\u2028\u2029'
-_DIGITS = u'0123456789'
-_HEX_DIGITS = _DIGITS + u'abcdefABCDEF'
-_IDENT = u'abcdefghijklmnopqrstuvwxyz' + \
-         u'ABCDEFGHIJKLMNOPQRSTUVWXYZ' + \
-         u'$_'
+_WHITESPACE = '\u0020\t\u000B\u000C\u00A0\uFFFF'
+_LINETERMINATOR = '\u000A\u000D\u2028\u2029'
+_DIGITS = '0123456789'
+_HEX_DIGITS = _DIGITS + 'abcdefABCDEF'
+_IDENT = 'abcdefghijklmnopqrstuvwxyz' + \
+         'ABCDEFGHIJKLMNOPQRSTUVWXYZ' + \
+         '$_'
 
 class _Char(object):
     def __init__(self, u):
@@ -29,13 +29,13 @@ class _Char(object):
 
     def tostr(self):
         if self._u is None:
-            return unicode()
-        return unichr(self._u)
+            return str()
+        return chr(self._u)
 
     def instr(self, s):
         if self._u is None:
             return False
-        return s.find(unichr(self._u)) != -1
+        return s.find(chr(self._u)) != -1
 
     def __hash__(self):
         return hash(self._u)
@@ -44,7 +44,7 @@ class _Char(object):
         assert isinstance(other, _Char), other
         return self._u == other._u
 
-    def __nonzero__(self):
+    def __bool__(self):
         return not self._u is None
 
 class Token:
@@ -313,7 +313,7 @@ class Tokenizer:
                     pass
             else:
                 # Decimal
-                if c != '.':
+                if c != _Char.ord('.'):
                     while stream.readchrin(_DIGITS):
                         pass
                     stream.readchrif(_Char.ord('.'))

@@ -1,19 +1,19 @@
 # vim: ts=4 sw=4 expandtab
-import HTMLParser
+import html.parser
 import unittest
 
 from jsengine.structs import NodePos, NodePositions
 
-class _Parser(HTMLParser.HTMLParser):
+class _Parser(html.parser.HTMLParser):
     def __init__(self):
-        HTMLParser.HTMLParser.__init__(self)
+        html.parser.HTMLParser.__init__(self)
         self._tags = []
         self._node_positions = None
 
     def feed(self, data):
         # Reset line numbers whenever we get data.
         self._node_positions = None
-        HTMLParser.HTMLParser.feed(self, data)
+        html.parser.HTMLParser.feed(self, data)
 
     def handle_starttag(self, tag, attributes):
         if tag.lower() == 'script':

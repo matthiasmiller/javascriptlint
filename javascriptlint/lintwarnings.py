@@ -17,13 +17,13 @@ For example:
 import itertools
 import re
 
-import util
+from . import util
 
 from jsengine import js_util
 from jsengine.parser import kind as tok
 from jsengine.parser import op
 
-_ALL_TOKENS = tok.__dict__.values()
+_ALL_TOKENS = list(tok.__dict__.values())
 
 def _get_assigned_lambda(node):
     """ Given a node "x = function() {}", returns "function() {}".
@@ -136,7 +136,7 @@ def format_error(errname, **errargs):
 _visitors = []
 def lookfor(*args):
     def decorate(fn):
-        fn.warning = fn.func_name.rstrip('_')
+        fn.warning = fn.__name__.rstrip('_')
         assert fn.warning in warnings, 'Missing warning description: %s' % fn.warning
 
         for arg in args:
@@ -615,9 +615,9 @@ def _check_return_value(node):
     assert node.kind == tok.LC
 
     exit_points = _get_exit_points(node)
-    if filter(is_return_with_val, exit_points):
+    if list(filter(is_return_with_val, exit_points)):
         # If the function returns a value, find all returns without a value.
-        returns = filter(is_return_without_val, exit_points)
+        returns = list(filter(is_return_without_val, exit_points))
         returns.sort(key=lambda node: node.start_offset)
         if returns:
             raise LintWarning(returns[0], name=name)

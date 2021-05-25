@@ -2,10 +2,10 @@
 import os
 import unittest
 
-import fs
-import util
-import version
-import lintwarnings
+from . import fs
+from . import util
+from . import version
+from . import lintwarnings
 
 _DISABLED_WARNINGS = (
    'block_without_braces',
@@ -232,7 +232,7 @@ class Conf:
         conf = fs.readfile(path, 'utf-8')
         try:
             self.loadtext(conf, dir=os.path.dirname(path))
-        except ConfError, error:
+        except ConfError as error:
             error.path = path
             raise
 
@@ -241,7 +241,7 @@ class Conf:
         for lineno in range(0, len(lines)):
             try:
                 self.loadline(lines[lineno], dir)
-            except ConfError, error:
+            except ConfError as error:
                 error.lineno = lineno
                 raise
 
@@ -298,8 +298,8 @@ class TestConf(unittest.TestCase):
         fromstr = Conf()
         fromstr.loadtext(DEFAULT_CONF)
         fromcode = Conf()
-        settings = set(fromcode._settings.keys() + fromstr._settings.keys())
+        settings = set(list(fromcode._settings.keys()) + list(fromstr._settings.keys()))
         for setting in settings:
-            self.assertEquals(fromcode[setting], fromstr[setting],
+            self.assertEqual(fromcode[setting], fromstr[setting],
                               'Mismatched defaults for %s' % setting)
 

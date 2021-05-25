@@ -74,6 +74,9 @@ class _Kind(object):
         assert isinstance(other, _Kind), repr(other)
         return self is other
 
+    def __hash__(self):
+        return hash(self._name)
+
     def __repr__(self):
         return 'kind.%s' % self._name
 

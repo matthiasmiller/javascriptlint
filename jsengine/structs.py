@@ -2,8 +2,8 @@
 import bisect
 import functools
 
-from parser._constants_kind import kind
-from parser._constants_op import op
+from .parser._constants_kind import kind
+from .parser._constants_op import op
 
 __all__ = ['NodePositions', 'NodePos', 'NodeRanges', 'ParseNode']
 

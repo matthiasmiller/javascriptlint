@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # vim: ts=4 sw=4 expandtab
-import BaseHTTPServer
+import http.server
 import datetime
 import re
 import os
@@ -293,7 +293,7 @@ def _transform_file(host, path):
     else:
         raise ValueError('Invalid file type: %s' % path)
 
-class _Handler(BaseHTTPServer.BaseHTTPRequestHandler):
+class _Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         path = _get_path_for_url(self.path, None)
         if path:
@@ -322,7 +322,7 @@ def runserver(host):
         addr = ''
         port = 8000
 
-    httpd = BaseHTTPServer.HTTPServer((addr, port), _Handler)
+    httpd = http.server.HTTPServer((addr, port), _Handler)
     httpd.serve_forever()
 
 def build(host):

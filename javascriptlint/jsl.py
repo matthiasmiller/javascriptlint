@@ -13,14 +13,14 @@ import sys
 import tempfile
 import unittest
 
-import conf
-import fs
-import htmlparse
-import jsparse
+from . import conf
+from . import fs
+from . import htmlparse
+from . import jsparse
 import jsengine.parser
-import lint
-import util
-import version
+from . import lint
+from . import util
+from . import version
 
 _lint_results = {
     'warning': 0,
@@ -35,8 +35,8 @@ def _dump(paths, encoding):
 def _lint_warning(conf_, path, line, col, msg_type, errname, errdesc):
     assert msg_type in ('warning', 'error')
     _lint_results[msg_type] += 1
-    print util.format_error(conf_['output-format'], path, line, col,
-                                  errname, errdesc)
+    print(util.format_error(conf_['output-format'], path, line, col,
+                                  errname, errdesc))
 
 def _lint(paths, conf_, printpaths, encoding):
     lint.lint_files(paths, functools.partial(_lint_warning, conf_), encoding,
@@ -58,8 +58,8 @@ def _resolve_paths(path, recurse):
     return paths or [path]
 
 def printlogo():
-    print "JavaScript Lint %s" % version.version
-    print "Developed by Matthias Miller (http://www.JavaScriptLint.com)"
+    print("JavaScript Lint %s" % version.version)
+    print("Developed by Matthias Miller (http://www.JavaScriptLint.com)")
 
 def _profile_enabled(func, *args, **kwargs):
     handle, filename = tempfile.mkstemp()
@@ -113,7 +113,7 @@ def _main():
         sys.exit()
 
     if options.showdefaultconf:
-        print conf.DEFAULT_CONF
+        print(conf.DEFAULT_CONF)
         sys.exit()
 
     if options.printlogo:
@@ -123,9 +123,9 @@ def _main():
     if options.conf:
         try:
             conf_.loadfile(options.conf)
-        except conf.ConfError, error:
+        except conf.ConfError as error:
             _lint_warning(conf_, error.path, error.lineno, 0, 'error', 'conf_error',
-                          unicode(error))
+                          str(error))
 
     profile_func = _profile_disabled
     if options.profile:
@@ -155,8 +155,8 @@ def _main():
         profile_func(_lint, paths, conf_, options.printlisting, options.encoding)
 
     if options.printsummary:
-        print '\n%i error(s), %i warnings(s)' % (_lint_results['error'],
-                                                 _lint_results['warning'])
+        print('\n%i error(s), %i warnings(s)' % (_lint_results['error'],
+                                                 _lint_results['warning']))
 
     if _lint_results['error']:
         sys.exit(3)

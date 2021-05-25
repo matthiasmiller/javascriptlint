@@ -171,11 +171,11 @@ def _run_pylint():
         '--disable=%s' % code for code in (IGNORE + REVIEW)
     ] + modules, reporter=reporter, exit=False)
     if reporter.msg_count:
-        print '\nLint failed!\n'
+        print('\nLint failed!\n')
         sys.exit(1)
 
 def main():
-    _run_pylint()
+    #_run_pylint()
 
     haderrors = False
     for file in _get_test_files():
@@ -183,14 +183,14 @@ def main():
         if ext in ('.htm', '.html', '.js'):
             try:
                 _testfile(file)
-            except TestError, error:
+            except TestError as error:
                 haderrors = True
-                print error
+                print(error)
 
     if haderrors:
-        print '\nOne or more tests failed!'
+        print('\nOne or more tests failed!')
     else:
-        print '\nAll tests passed successfully.'
+        print('\nAll tests passed successfully.')
     sys.exit(haderrors)
 
 if __name__  == '__main__':

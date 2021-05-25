@@ -1,5 +1,5 @@
 # vim: ts=4 sw=4 expandtab
-from parser import kind as tok
+from .parser import kind as tok
 
 def numeric_property_str(node):
     assert node.kind == tok.NUMBER

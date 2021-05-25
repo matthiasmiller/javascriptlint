@@ -2,13 +2,13 @@
 # vim: ts=4 sw=4 expandtab
 import os.path
 
-import conf
-import fs
-import htmlparse
-import jsparse
-import lintwarnings
+from . import conf
+from . import fs
+from . import htmlparse
+from . import jsparse
+from . import lintwarnings
 import unittest
-import util
+from . import util
 
 from jsengine.parser import kind as tok
 from jsengine.parser import op
@@ -86,7 +86,7 @@ class ScopeObject:
         return self._kids[-1]
 
     def add_declaration(self, name, node, type_):
-        assert isinstance(name, basestring)
+        assert isinstance(name, str)
         self._identifiers[name] = ScopeObject(self, node, type_)
 
     def add_reference(self, name, node):
@@ -125,7 +125,7 @@ class ScopeObject:
         #   [ (scope, name, node) ]
         # sorted by node position.
         unreferenced = [(key[0], key[1], node) for key, node
-                        in unreferenced.items()]
+                        in list(unreferenced.items())]
         unreferenced.sort(key=lambda x: x[2].start_offset)
 
         return {
@@ -152,12 +152,12 @@ class ScopeObject:
         # Add all identifiers as unreferenced. Children scopes will remove
         # them if they are referenced.  Variables need to be keyed by name
         # instead of node, because function parameters share the same node.
-        for name, info in self._identifiers.items():
+        for name, info in list(self._identifiers.items()):
             unreferenced[(self, name)] = info.node
 
         # Check for variables that hide an identifier in a parent scope.
         if self._parent:
-            for name, info in self._identifiers.items():
+            for name, info in list(self._identifiers.items()):
                 if self._parent.resolve_property(name):
                     obstructive.append((self, name, info.node))
 
@@ -314,13 +314,13 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
         if normpath in lint_cache:
             return lint_cache[normpath]
         if printpaths:
-            print normpath
+            print(normpath)
 
         lint_cache[normpath] = _Script()
         try:
             contents = fs.readfile(path, encoding)
-        except IOError, error:
-            lint_error(normpath, 0, 0, 'error', 'io_error', unicode(error))
+        except IOError as error:
+            lint_error(normpath, 0, 0, 'error', 'io_error', str(error))
             return lint_cache[normpath]
         node_positions = jsparse.NodePositions(contents)
 
@@ -428,7 +428,7 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
 
     try:
         root = jsparse.parse(script, jsversion, script_offset)
-    except jsparse.JSSyntaxError, error:
+    except jsparse.JSSyntaxError as error:
         # Report errors and quit.
         report_parse_error(error.offset, error.msg, error.msg_args)
         return
@@ -497,7 +497,7 @@ def _lint_script_part(script_offset, jsversion, script, script_cache, conf,
         'push': lintwarnings.make_visitors(conf)
     }
     for event in visitors:
-        for kind, callbacks in visitors[event].items():
+        for kind, callbacks in list(visitors[event].items()):
             visitors[event][kind] = [_getreporter(callback, report) for callback in callbacks]
 
     # Push the scope/variable checks.
@@ -562,7 +562,7 @@ def _getreporter(visitor, report):
         try:
             ret = visitor(node)
             assert ret is None, 'visitor should raise an exception, not return a value'
-        except lintwarnings.LintWarning, warning:
+        except lintwarnings.LintWarning as warning:
             # TODO: This is ugly hardcoding to improve the error positioning of
             # "missing_semicolon" errors.
             if visitor.warning in ('missing_semicolon', 'missing_semicolon_for_lambda',
@@ -659,7 +659,7 @@ ok&amp;
 """
         scripts = [(x.get('src'), x.get('contents'))
                    for x in _findhtmlscripts(html, util.JSVersion.default())]
-        self.assertEquals(scripts, [
+        self.assertEqual(scripts, [
             ('test.js', None),
             (None, "<!--\nvar s = '<script></script>';\n-->")
         ])
@@ -670,43 +670,43 @@ ok&amp;
             return script
 
         script = parsetag('<script>')
-        self.assertEquals(script['jsversion'], None)
+        self.assertEqual(script['jsversion'], None)
 
         script = parsetag('<script language="vbscript">')
-        self.assertEquals(script['jsversion'], None)
+        self.assertEqual(script['jsversion'], None)
 
         script = parsetag('<script type="text/javascript">')
-        self.assertEquals(script['jsversion'], util.JSVersion.default())
+        self.assertEqual(script['jsversion'], util.JSVersion.default())
 
         script = parsetag('<SCRIPT TYPE="TEXT/JAVASCRIPT">')
-        self.assertEquals(script['jsversion'], util.JSVersion.default())
+        self.assertEqual(script['jsversion'], util.JSVersion.default())
 
         script = parsetag('<script type="text/javascript; version = 1.6 ">')
-        self.assertEquals(script['jsversion'], util.JSVersion('1.6', False))
+        self.assertEqual(script['jsversion'], util.JSVersion('1.6', False))
 
         script = parsetag('<script type="text/javascript; version = 1.6 ">')
-        self.assertEquals(script['jsversion'], util.JSVersion('1.6', False))
+        self.assertEqual(script['jsversion'], util.JSVersion('1.6', False))
 
         script = parsetag('<SCRIPT TYPE="TEXT/JAVASCRIPT; e4x = 1 ">')
-        self.assertEquals(script['jsversion'], util.JSVersion('default', True))
+        self.assertEqual(script['jsversion'], util.JSVersion('default', True))
 
         script = parsetag('<script type="" language="livescript">')
-        self.assertEquals(script['jsversion'], util.JSVersion.default())
+        self.assertEqual(script['jsversion'], util.JSVersion.default())
 
         script = parsetag('<script type="" language="MOCHA">')
-        self.assertEquals(script['jsversion'], util.JSVersion.default())
+        self.assertEqual(script['jsversion'], util.JSVersion.default())
 
         script = parsetag('<script type="" language="JavaScript1.2">')
-        self.assertEquals(script['jsversion'], util.JSVersion('1.2', False))
+        self.assertEqual(script['jsversion'], util.JSVersion('1.2', False))
 
         script = parsetag('<script type="text/javascript;version=1.2" language="javascript1.4">')
-        self.assertEquals(script['jsversion'], util.JSVersion('1.2', False))
+        self.assertEqual(script['jsversion'], util.JSVersion('1.2', False))
 
         # Test setting the default version.
         script = parsetag('<script>', util.JSVersion('1.2', False))
-        self.assertEquals(script['jsversion'], util.JSVersion('1.2', False))
+        self.assertEqual(script['jsversion'], util.JSVersion('1.2', False))
 
         script = parsetag('<script type="" language="mocha">',
                               util.JSVersion('1.2', False))
-        self.assertEquals(script['jsversion'], util.JSVersion.default())
+        self.assertEqual(script['jsversion'], util.JSVersion.default())
 
