@@ -268,12 +268,13 @@ def _postfix_expression(t):
             opcode = op.NAMEINC
         return ParseNode(kind.INC, opcode,
                          kid.start_offset, end_offset, None, [kid])
-    elif t.peek_sameline().tok == tok.DEC:
+
+    if t.peek_sameline().tok == tok.DEC:
         end_offset = t.expect(tok.DEC).end_offset
         return ParseNode(kind.DEC, op.NAMEDEC,
                          kid.start_offset, end_offset, None, [kid])
-    else:
-        return kid
+
+    return kid
 
 _UNARY = {
     tok.DELETE: (kind.DELETE, None),
@@ -293,8 +294,8 @@ def _unary_expression(t):
         start_offset = t.advance().start_offset
         kid = _unary_expression(t)
         return ParseNode(kind_, op_, start_offset, kid.end_offset, None, [kid])
-    else:
-        return _postfix_expression(t)
+
+    return _postfix_expression(t)
 
 def _binary_expression(t, dict_, child_expr_callback):
     expr = child_expr_callback(t)
@@ -437,8 +438,7 @@ def _conditional_expression(t, allowin):
         return ParseNode(kind.HOOK, None,
                          kid.start_offset, else_.end_offset,
                          None, [kid, if_, else_])
-    else:
-        return kid
+    return kid
 
 _ASSIGNS = {
     tok.ASSIGN: (kind.ASSIGN, None),
@@ -479,8 +479,8 @@ def _assignment_expression(t, allowin):
         right = _assignment_expression(t, allowin)
         return ParseNode(kind_, op_,
                          left.start_offset, right.end_offset, None, [left, right])
-    else:
-        return left
+
+    return left
 
 def _expression(t, allowin):
     items = []
@@ -491,8 +491,7 @@ def _expression(t, allowin):
     if len(items) > 1:
         return ParseNode(kind.COMMA, None, items[0].start_offset,
                          items[-1].end_offset, None, items)
-    else:
-        return items[0]
+    return items[0]
 
 def _variable_declaration(t, allowin):
     nodes = []
@@ -762,38 +761,38 @@ def _statement(t):
     x = t.peek()
     if x.tok == tok.LBRACE:
         return _block_statement(t)
-    elif x.tok == tok.SEMI:
+    if x.tok == tok.SEMI:
         return _empty_statement(t)
-    elif x.tok == tok.VAR:
+    if x.tok == tok.VAR:
         return _var_statement(t)
-    elif x.tok == tok.IF:
+    if x.tok == tok.IF:
         return _if_statement(t)
-    elif x.tok == tok.DO:
+    if x.tok == tok.DO:
         return _do_statement(t)
-    elif x.tok == tok.WHILE:
+    if x.tok == tok.WHILE:
         return _while_statement(t)
-    elif x.tok == tok.FOR:
+    if x.tok == tok.FOR:
         return _for_statement(t)
-    elif x.tok == tok.CONTINUE:
+    if x.tok == tok.CONTINUE:
         return _continue_statement(t)
-    elif x.tok == tok.BREAK:
+    if x.tok == tok.BREAK:
         return _break_statement(t)
-    elif x.tok == tok.RETURN:
+    if x.tok == tok.RETURN:
         return _return_statement(t)
-    elif x.tok == tok.WITH:
+    if x.tok == tok.WITH:
         return _with_statement(t)
-    elif x.tok == tok.SWITCH:
+    if x.tok == tok.SWITCH:
         return _switch_statement(t)
-    elif x.tok == tok.THROW:
+    if x.tok == tok.THROW:
         return _throw_statement(t)
-    elif x.tok == tok.TRY:
+    if x.tok == tok.TRY:
         return _try_statement(t)
-    elif x.tok == tok.EOF:
+    if x.tok == tok.EOF:
         raise JSSyntaxError(x.start_offset, 'unexpected_eof')
-    elif x.tok == tok.FUNCTION:
+    if x.tok == tok.FUNCTION:
         return _function_declaration(t, op.CLOSURE) #TODO: warn, since this is not reliable
 
-    elif x.tok not in (tok.LBRACE, tok.FUNCTION):
+    if x.tok not in (tok.LBRACE, tok.FUNCTION):
         expr = _expression(t, True)
         if expr.kind == kind.NAME and t.peek().tok == tok.COLON:
             t.expect(tok.COLON)
@@ -803,8 +802,8 @@ def _statement(t):
 
         return _auto_semicolon(t, kind.SEMI, None, expr.start_offset, expr.end_offset,
                                None, [expr])
-    else:
-        raise JSSyntaxError(x.start_offset, 'syntax_error')
+
+    raise JSSyntaxError(x.start_offset, 'syntax_error')
 
 def _sourceelements(t, end_tok):
     nodes = []
