@@ -856,28 +856,13 @@ class TestParser(unittest.TestCase):
         self.assertTrue(is_compilable_unit('/**/', 'default'))
         self.assertTrue(not is_compilable_unit('/*', 'default'))
     def testRegExpLineBreak(self):
-        try:
-            parsestring('re = /[\n');
-        except JSSyntaxError as error:
-            self.assertEqual(error.offset, 5)
-        else:
-            self.assertTrue(False)
-        try:
-            # Do not allow after an escape sequence, either.
-            parsestring('re = /[\\\n');
-        except JSSyntaxError as error:
-            self.assertEqual(error.offset, 5)
-        else:
-            self.assertTrue(False)
+        self.assertEqual(self._error_offset('re = /[\n'), 5)
+        # Do not allow after an escape sequence, either.
+        self.assertEqual(self._error_offset('re = /[\\\n'), 5)
     def testRegExpBugReport(self):
         parsestring('validity = /[^\[\]/]/g')
     def testUnterminatedComment(self):
-        try:
-            parsestring('/*')
-        except JSSyntaxError as error:
-            self.assertEqual(error.offset, 1)
-        else:
-            self.assertTrue(False)
+        self.assertEqual(self._error_offset('/*'), 1)
     def testObjectEndComma(self):
         root = parsestring('a={a:1,}')
         node, = root.kids
@@ -935,9 +920,11 @@ class TestParser(unittest.TestCase):
         self._testArrayCommas('a=[1,,1]', ['1', None, '1'], False)
         self._testArrayCommas('a=[,1,]', [None, '1'], True)
     def testParseArray(self):
+        self.assertEqual(self._error_offset('a=[1 1]'), 5)
+    @staticmethod
+    def _error_offset(s):
         try:
-            parsestring('a=[1 1]')
+            parsestring(s)
         except JSSyntaxError as error:
-            pass
-        else:
-            self.assertTrue(False)
+            return error.offset
+        return None
