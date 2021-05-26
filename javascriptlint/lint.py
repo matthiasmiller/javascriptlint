@@ -1,17 +1,17 @@
 #!/usr/bin/python
 # vim: ts=4 sw=4 expandtab
 import os.path
+import unittest
+
+from jsengine.parser import kind as tok
+from jsengine.parser import op
 
 from . import conf
 from . import fs
 from . import htmlparse
 from . import jsparse
 from . import lintwarnings
-import unittest
 from . import util
-
-from jsengine.parser import kind as tok
-from jsengine.parser import op
 
 _globals = frozenset([
     'Array', 'Boolean', 'Math', 'Number', 'String', 'RegExp', 'Script', 'Date',

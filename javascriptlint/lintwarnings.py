@@ -17,11 +17,10 @@ For example:
 import itertools
 import re
 
-from . import util
-
 from jsengine import js_util
 from jsengine.parser import kind as tok
 from jsengine.parser import op
+from . import util
 
 _ALL_TOKENS = list(tok.__dict__.values())
 

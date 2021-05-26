@@ -3,12 +3,11 @@ import unittest
 
 from jsengine.tokenizer import tok
 from jsengine import tokenizer
-
 from jsengine import JSSyntaxError
+from jsengine.structs import *
 from ._constants_kind import kind
 from ._constants_op import op
 
-from jsengine.structs import *
 
 _VERSIONS = [
     "default",

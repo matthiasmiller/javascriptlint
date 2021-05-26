@@ -13,11 +13,11 @@ import sys
 import tempfile
 import unittest
 
+import jsengine.parser
 from . import conf
 from . import fs
 from . import htmlparse
 from . import jsparse
-import jsengine.parser
 from . import lint
 from . import util
 from . import version
