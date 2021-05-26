@@ -3,8 +3,8 @@ import codecs
 import os
 
 def readfile(path, encoding):
-    file = codecs.open(path, 'r', encoding)
-    contents = file.read()
+    with codecs.open(path, 'r', encoding) as f:
+        contents = f.read()
     if contents and contents[0] == str(codecs.BOM_UTF8, 'utf8'):
         contents = contents[1:]
     return contents
