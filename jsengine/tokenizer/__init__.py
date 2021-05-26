@@ -75,7 +75,7 @@ class TokenStream:
         self._watched_offset = self._offset
 
     def get_watched_reads(self):
-        assert not self._watched_offset == None
+        assert self._watched_offset is not None
         s = self._content[self._watched_offset:self._offset]
         self._watched_offset = None
         return s
