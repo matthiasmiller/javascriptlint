@@ -36,8 +36,8 @@ def _get_expected_warnings(script):
     regexp = re.compile(r"/\*(error|warning):([^*]*)\*/")
 
     lines = script.splitlines()
-    for i in range(0, len(lines)):
-        for msg_type, warning in regexp.findall(lines[i]):
+    for i, line in enumerate(lines):
+        for msg_type, warning in regexp.findall(line):
             # TODO: implement these
             unimpl_warnings = ('dup_option_explicit',)
             if not warning in unimpl_warnings:
@@ -115,6 +115,7 @@ def _get_python_modules(dir_):
 def _run_pylint():
     IGNORE = [
         'C0111', # Missing docstring
+        'C0305', # Trailing newline
         'I0011', # Locally disabling warning
         'R0902', # Too many instance attributes (%s/%s)
         'R0903', # Too few public methods (%s/%s)
@@ -175,7 +176,7 @@ def _run_pylint():
         sys.exit(1)
 
 def main():
-    #_run_pylint()
+    _run_pylint()
 
     haderrors = False
     for file in _get_test_files():
