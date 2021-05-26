@@ -55,6 +55,8 @@ def _parse_control_comment(comment):
             parms = control_comment[len(keyword):].strip()
             return (comment, keyword, parms.strip())
 
+    return None
+
 class ScopeObject:
     """ Outer-level scopes will never be associated with a node.
         Inner-level scopes will always be associated with a node.
@@ -205,6 +207,8 @@ class ScopeObject:
             node.end_offset <= self._node.end_offset):
             return self
 
+        return None
+
 class _Script:
     def __init__(self):
         self._imports = set()
@@ -225,7 +229,7 @@ class _Script:
         """ searched is a set of all searched scripts """
         # Avoid recursion.
         if self in searched:
-            return
+            return None
 
         # Check this scope.
         if self.scope.has_property(name):
@@ -237,6 +241,8 @@ class _Script:
             global_ = script._findglobal(name, searched)
             if global_:
                 return global_
+
+        return None
 
 def _findhtmlscripts(contents, default_version):
     starttag = None
@@ -306,7 +312,7 @@ def lint_files(paths, lint_error, encoding, conf=conf.Conf(), printpaths=True):
         def _report(offset, msg_type, errname, errargs):
             errdesc = lintwarnings.format_error(errname, **errargs)
             if lint_cache[normpath].should_ignore(offset):
-                return
+                return None
             pos = node_positions.from_offset(offset)
             return lint_error(normpath, pos.line, pos.col, msg_type, errname, errdesc)
 

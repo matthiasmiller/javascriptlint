@@ -40,6 +40,8 @@ def _get_assigned_lambda(node):
     if value and value.kind == tok.FUNCTION and value.opcode == op.ANONFUNOBJ:
         return value
 
+    return None
+
 # TODO: document inspect, node:opcode, etc
 
 warnings = {
@@ -214,6 +216,7 @@ def _get_exit_points(node):
         def break_to_none(node):
             if node and node.kind != tok.BREAK:
                 return node
+            return None
         exit_points = set(map(break_to_none, exit_points))
 
         # Check if the switch had a default case
@@ -722,7 +725,7 @@ def unexpected_not_comparison(node):
 def _get_function_property_name(node):
     # Ignore function statements.
     if node.opcode in (None, op.CLOSURE):
-        return
+        return None
 
     # Ignore parens.
     parent = node.parent
@@ -751,6 +754,8 @@ def _get_function_property_name(node):
     # Object literal.
     if parent.kind == tok.COLON and parent.parent.kind == tok.RC:
         return parent.kids[0].atom
+
+    return None
 
 def _get_expected_function_name(node, decorate):
     name = _get_function_property_name(node)

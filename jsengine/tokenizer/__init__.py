@@ -123,6 +123,8 @@ class TokenStream:
                 self._offset += len_
                 return text
 
+        return None
+
 class Tokenizer:
     def __init__(self, stream):
         self._stream = stream
