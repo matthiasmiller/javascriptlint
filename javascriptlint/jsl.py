@@ -167,8 +167,8 @@ def _main():
 def main():
     try:
         _main()
-    except KeyboardInterrupt:
-        raise SystemExit(130)
+    except KeyboardInterrupt as error:
+        raise SystemExit(130) from error
 
 if __name__ == '__main__':
     main()

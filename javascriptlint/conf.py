@@ -272,8 +272,8 @@ class Conf:
         # Load the setting
         try:
             setting = self._settings[name]
-        except KeyError:
-            raise ConfError('Unrecognized setting: %s' % name)
+        except KeyError as error:
+            raise ConfError('Unrecognized setting: %s' % name) from error
         args = {
             'enabled': enabled
         }
