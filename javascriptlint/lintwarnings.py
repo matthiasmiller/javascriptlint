@@ -122,10 +122,8 @@ errors = {
 }
 
 def format_error(errname, **errargs):
-    if errname in errors:
-       errdesc = errors[errname]
-    else:
-       errdesc = warnings[errname]
+    errdesc = errors.get(errname, warnings.get(errname))
+    assert errdesc is not None, errname
 
     try:
         keyword = re.compile(r"{(\w+)}")
