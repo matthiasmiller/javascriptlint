@@ -110,7 +110,7 @@ def _primary_expression(t):
             x = t.peek()
             if x.tok == tok.RBRACE:
                 break
-            elif x.tok == tok.STRING:
+            if x.tok == tok.STRING:
                 t.expect(tok.STRING)
                 key = ParseNode(kind.STRING, None, x.start_offset,
                                 x.end_offset, x.atom, [])
