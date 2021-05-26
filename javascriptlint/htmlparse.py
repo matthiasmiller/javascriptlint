@@ -4,11 +4,17 @@ import unittest
 
 from jsengine.structs import NodePos, NodePositions
 
+class HTMLError(Exception):
+    pass
+
 class _Parser(html.parser.HTMLParser):
     def __init__(self):
         html.parser.HTMLParser.__init__(self)
         self._tags = []
         self._node_positions = None
+
+    def error(self, message):
+        raise HTMLError(message)
 
     def feed(self, data):
         # Reset line numbers whenever we get data.
