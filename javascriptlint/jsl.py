@@ -5,9 +5,9 @@ try:
     import hotshot.stats
 except ImportError:
     hotshot = None
+import argparse
 import fnmatch
 import functools
-import optparse
 import os
 import sys
 import tempfile
@@ -73,12 +73,12 @@ def _profile_disabled(func, *args, **kwargs):
     func(*args, **kwargs)
 
 def _main():
-    parser = optparse.OptionParser(usage="%prog [options] [files]")
-    add = parser.add_option
+    parser = argparse.ArgumentParser()
+    add = parser.add_argument
     add("--conf", dest="conf", metavar="CONF",
         help="set the conf file")
     add("--profile", dest="profile", action="store_true", default=False,
-        help="turn on hotshot profiling" if hotshot is not None else optparse.SUPPRESS_HELP)
+        help="turn on hotshot profiling" if hotshot is not None else argparse.SUPPRESS)
     add("--recurse", dest="recurse", action="store_true", default=False,
         help="recursively search directories on the command line")
     if os.name == 'nt':
@@ -105,56 +105,57 @@ def _main():
         help="display the default configuration file")
     add("--encoding", dest="encoding", metavar="ENCODING", default="utf-8",
         help="encoding for input file(s)")
+    add("paths", nargs="*")
     parser.set_defaults(verbosity=1)
-    options, args = parser.parse_args()
+    args = parser.parse_args()
 
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit()
 
-    if options.showdefaultconf:
+    if args.showdefaultconf:
         print(conf.DEFAULT_CONF)
         sys.exit()
 
-    if options.printlogo:
+    if args.printlogo:
         printlogo()
 
     conf_ = conf.Conf()
-    if options.conf:
+    if args.conf:
         try:
-            conf_.loadfile(options.conf)
+            conf_.loadfile(args.conf)
         except conf.ConfError as error:
             _lint_warning(conf_, error.path, error.lineno, 0, 'error', 'conf_error',
                           str(error))
 
     profile_func = _profile_disabled
-    if options.profile:
+    if args.profile:
         profile_func = _profile_enabled
 
-    if options.unittest:
+    if args.unittest:
         suite = unittest.TestSuite();
         for module in [conf, htmlparse, jsengine.parser, jsparse, lint, util]:
             suite.addTest(unittest.findTestCases(module))
 
-        runner = unittest.TextTestRunner(verbosity=options.verbosity)
+        runner = unittest.TextTestRunner(verbosity=args.verbosity)
         runner.run(suite)
 
     paths = []
     for recurse, path in conf_['paths']:
         paths.extend(_resolve_paths(path, recurse))
-    for arg in args:
-        if options.wildcards:
-            paths.extend(_resolve_paths(arg, options.recurse))
-        elif options.recurse and os.path.isdir(arg):
+    for arg in args.paths:
+        if args.wildcards:
+            paths.extend(_resolve_paths(arg, args.recurse))
+        elif args.recurse and os.path.isdir(arg):
             paths.extend(_resolve_paths(os.path.join(arg, '*'), True))
         else:
             paths.append(arg)
-    if options.dump:
-        profile_func(_dump, paths, options.encoding)
+    if args.dump:
+        profile_func(_dump, paths, args.encoding)
     else:
-        profile_func(_lint, paths, conf_, options.printlisting, options.encoding)
+        profile_func(_lint, paths, conf_, args.printlisting, args.encoding)
 
-    if options.printsummary:
+    if args.printsummary:
         print('\n%i error(s), %i warnings(s)' % (_lint_results['error'],
                                                  _lint_results['warning']))
 
