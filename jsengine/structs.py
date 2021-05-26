@@ -162,14 +162,17 @@ class ParseNode:
                 return False
 
         if self.kind == kind.DOT and self_opcode == op.GETPROP and \
-            other.kind == kind.LB and other_opcode == op.GETELEM and \
-            self.atom == other.kids[1].atom and \
-            self.kids[0].is_equivalent(other.kids[0], are_functions_equiv):
-            return True
-        if other.kind == kind.DOT and other_opcode == op.GETPROP and \
-            self.kind == kind.LB and self_opcode == op.GETELEM and \
-            self.kids[1].atom == other.atom and \
-            self.kids[0].is_equivalent(other.kids[0], are_functions_equiv):
+                other.kind == kind.LB and other_opcode == op.GETELEM and \
+                self.atom == other.kids[1].atom:
+            matching_dot_prop = True
+        elif other.kind == kind.DOT and other_opcode == op.GETPROP and \
+                self.kind == kind.LB and self_opcode == op.GETELEM and \
+                self.kids[1].atom == other.atom:
+            matching_dot_prop = True
+        else:
+            matching_dot_prop = False
+        if matching_dot_prop and \
+                self.kids[0].is_equivalent(other.kids[0], are_functions_equiv):
             return True
 
         if self.kind != other.kind:
