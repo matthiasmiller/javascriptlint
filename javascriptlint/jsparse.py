@@ -123,8 +123,8 @@ def _dump_node(node, node_positions, depth=0):
             print('     '*depth, end=' ')
             print('(no semicolon)')
         print()
-        for node in node.kids:
-            _dump_node(node, node_positions, depth+1)
+        for child_node in node.kids:
+            _dump_node(child_node, node_positions, depth+1)
 
 def dump_tree(script):
     node_positions = NodePositions(script)

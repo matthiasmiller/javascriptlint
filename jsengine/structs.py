@@ -191,8 +191,7 @@ class ParseNode:
         for i in range(0, len(self.kids)):
             # Watch for dead nodes
             if not self.kids[i]:
-                if not other.kids[i]: return True
-                else: return False
+                return bool(not other.kids[i])
             if not self.kids[i].is_equivalent(other.kids[i]):
                 return False
 

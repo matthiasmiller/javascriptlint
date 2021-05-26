@@ -101,8 +101,8 @@ class ScopeObject:
     def get_property_type(self, name):
         if name in self._identifiers:
             return self._identifiers[name]._type
-        else:
-            return None
+        return None
+
     def resolve_property(self, name):
         if name in self._identifiers:
             return self._identifiers[name]

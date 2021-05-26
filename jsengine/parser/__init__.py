@@ -51,21 +51,29 @@ def _primary_expression(t):
     x = t.next_withregexp()
     if x.tok == tok.THIS:
         return ParseNode(kind.PRIMARY, op.THIS, x.start_offset, x.end_offset, None, [])
-    elif x.tok == tok.NAME:
+
+    if x.tok == tok.NAME:
         return ParseNode(kind.NAME, op.NAME, x.start_offset, x.end_offset, x.atom, [None])
-    elif x.tok == tok.NULL:
+
+    if x.tok == tok.NULL:
         return ParseNode(kind.PRIMARY, op.NULL, x.start_offset, x.end_offset, None, [])
-    elif x.tok == tok.TRUE:
+
+    if x.tok == tok.TRUE:
         return ParseNode(kind.PRIMARY, op.TRUE, x.start_offset, x.end_offset, None, [])
-    elif x.tok == tok.FALSE:
+
+    if x.tok == tok.FALSE:
         return ParseNode(kind.PRIMARY, op.FALSE, x.start_offset, x.end_offset, None, [])
-    elif x.tok == tok.STRING:
+
+    if x.tok == tok.STRING:
         return ParseNode(kind.STRING, op.STRING, x.start_offset, x.end_offset, x.atom, [])
-    elif x.tok == tok.REGEXP:
+
+    if x.tok == tok.REGEXP:
         return ParseNode(kind.OBJECT, op.REGEXP, x.start_offset, x.end_offset, None, [])
-    elif x.tok == tok.NUMBER:
+
+    if x.tok == tok.NUMBER:
         return ParseNode(kind.NUMBER, None, x.start_offset, x.end_offset, x.atom, [])
-    elif x.tok == tok.LBRACKET:
+
+    if x.tok == tok.LBRACKET:
         start_offset = x.start_offset
         items = []
         end_comma = None
@@ -93,7 +101,8 @@ def _primary_expression(t):
         end_offset = t.expect(tok.RBRACKET).end_offset
         return ParseNode(kind.RB, None, start_offset, end_offset, None, items,
                          end_comma=end_comma)
-    elif x.tok == tok.LBRACE:
+
+    if x.tok == tok.LBRACE:
         start_offset = x.start_offset
         kids = []
         # TODO: get/set
@@ -128,13 +137,14 @@ def _primary_expression(t):
         end_offset = t.expect(tok.RBRACE).end_offset
         return ParseNode(kind.RC, None, start_offset, end_offset, None, kids,
                          end_comma=end_comma)
-    elif x.tok == tok.LPAREN:
+
+    if x.tok == tok.LPAREN:
         start_offset = x.start_offset
         kid = _expression(t, True)
         end_offset = t.expect(tok.RPAREN).end_offset
         return ParseNode(kind.RP, None, start_offset, end_offset, None, [kid])
-    else:
-        raise JSSyntaxError(x.start_offset, 'syntax_error')
+
+    raise JSSyntaxError(x.start_offset, 'syntax_error')
 
 def _function_declaration(t, named_opcode):
     node = _function_expression(t, named_opcode)

@@ -163,8 +163,7 @@ class Tokenizer:
                 self._error = True
                 raise JSSyntaxError(token.start_offset, token.atom or 'syntax_error')
             return token
-        else:
-            return self.advance()
+        return self.advance()
 
     def expect(self, tok):
         encountered = self.advance()
@@ -224,7 +223,7 @@ class Tokenizer:
 
                     if c == _Char.ord('\n'):
                         return Token(tok.ERROR)
-                    elif c == _Char.ord(']') and not escaped:
+                    if c == _Char.ord(']') and not escaped:
                         break
             elif c == _Char.ord('\n'):
                 return Token(tok.ERROR)
@@ -261,8 +260,7 @@ class Tokenizer:
                     break
             if linebreak:
                 return Token(tok.EOL)
-            else:
-                return Token(tok.SPACE)
+            return Token(tok.SPACE)
 
         # COMMENTS
         if c == _Char.ord('/'):

@@ -238,9 +238,9 @@ class Conf:
 
     def loadtext(self, conf, dir=None):
         lines = conf.splitlines()
-        for lineno in range(0, len(lines)):
+        for lineno, line in enumerate(lines):
             try:
-                self.loadline(lines[lineno], dir)
+                self.loadline(line, dir)
             except ConfError as error:
                 error.lineno = lineno
                 raise
