@@ -200,10 +200,10 @@ def _get_exit_points(node):
         switch_has_final_fallthru = True
 
         switch_var, switch_stmts = node.kids
-        for node in switch_stmts.kids:
-            case_val, case_stmt = node.kids
+        for iter_node in switch_stmts.kids:
+            case_val, case_stmt = iter_node.kids
             case_exit_points = _get_exit_points(case_stmt)
-            switch_has_default = switch_has_default or node.kind == tok.DEFAULT
+            switch_has_default = switch_has_default or iter_node.kind == tok.DEFAULT
             switch_has_final_fallthru = None in case_exit_points
             exit_points |= case_exit_points
 
@@ -245,7 +245,8 @@ def _get_exit_points(node):
             assert catch_.kind == tok.LEXICALSCOPE
             catch_, = catch_.kids
             assert catch_.kind == tok.CATCH
-            ignored, ignored, catch_ = catch_.kids
+            assert len(catch_.kids) == 3
+            catch_ = catch_.kids[-1]
             assert catch_.kind == tok.LC
 
             exit_points |= _get_exit_points(catch_)
