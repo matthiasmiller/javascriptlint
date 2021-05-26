@@ -7,6 +7,11 @@ import os
 import subprocess
 import sys
 
+try:
+    import py2exe
+except ImportError:
+    py2exe = None
+
 from javascriptlint import version
 
 class _BuildError(Exception):
@@ -29,11 +34,7 @@ def _setup():
         packages = ['javascriptlint'],
         scripts = ['jsl']
     )
-    try:
-        import py2exe
-    except ImportError:
-        pass
-    else:
+    if py2exe is not None:
         class _MyPy2Exe(py2exe.build_exe.py2exe):
             def run(self):
                 py2exe.build_exe.py2exe.run(self)
