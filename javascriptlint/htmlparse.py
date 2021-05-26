@@ -15,14 +15,13 @@ class _Parser(html.parser.HTMLParser):
         self._node_positions = None
         html.parser.HTMLParser.feed(self, data)
 
-    def handle_starttag(self, tag, attributes):
+    def handle_starttag(self, tag, attrs):
         if tag.lower() == 'script':
-            attr = dict(attributes)
             self._tags.append({
                 'type': 'start',
                 'offset': self._getoffset(),
                 'len': len(self.get_starttag_text()),
-                'attr': attr
+                'attr': dict(attrs)
             })
 
     def handle_endtag(self, tag):
