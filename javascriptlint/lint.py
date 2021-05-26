@@ -218,7 +218,7 @@ class _Script:
         self._ignores.append((start, end))
     def should_ignore(self, offset):
         for start, end in self._ignores:
-            if offset >= start and offset <= end:
+            if start <= offset <= end:
                 return True
         return False
     def importscript(self, script):
@@ -245,6 +245,9 @@ class _Script:
         return None
 
 def _findhtmlscripts(contents, default_version):
+    # Disable the warning about starttag being unsubscriptable
+    # pylint: disable=E1136
+
     starttag = None
     for tag in htmlparse.findscripttags(contents):
         if tag['type'] == 'start':
