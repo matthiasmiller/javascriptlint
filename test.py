@@ -9,6 +9,7 @@ from pylint.reporters.text import TextReporter
 
 import javascriptlint.conf
 import javascriptlint.lint
+import jsengine.tokenizer
 
 _DEFAULT_CONF = """
 # This warning triggers a lot of warnings in many of the tests, so only enable
@@ -44,7 +45,7 @@ def _get_expected_warnings(script):
                 warnings.append((i, msg_type, warning))
     return warnings
 
-def _testfile(path):
+def _testfile(path, printpaths=True):
     script_dir = os.path.dirname(path)
     assert os.path.isabs(script_dir)
 
@@ -61,7 +62,7 @@ def _testfile(path):
         else:
             unexpected_warnings.append(warning + (errdesc,))
 
-    javascriptlint.lint.lint_files([path], lint_error, 'utf-8', conf=conf)
+    javascriptlint.lint.lint_files([path], lint_error, 'utf-8', conf=conf, printpaths=printpaths)
 
     errors = []
     if expected_warnings:
@@ -183,7 +184,11 @@ def main():
         ext = os.path.splitext(file)[1]
         if ext in ('.htm', '.html', '.js'):
             try:
+                # Run with both debug checks and without
+                jsengine.tokenizer.enable_debug_checks()
                 _testfile(file)
+                jsengine.tokenizer.enable_debug_checks(False)
+                _testfile(file, False)
             except TestError as error:
                 haderrors = True
                 print(error)
