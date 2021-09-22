@@ -35,13 +35,15 @@ def _setup():
         scripts = ['jsl']
     )
     if py2exe is not None:
-        class _MyPy2Exe(py2exe.build_exe.py2exe):
+        class _MyPy2Exe(py2exe.distutils_buildexe.py2exe):
             def run(self):
-                py2exe.build_exe.py2exe.run(self)
-                for exe in self.console_exe_files:
-                    ret = subprocess.call(['upx', '-9', exe])
-                    if ret != 0:
-                        raise _BuildError('Error running upx on %s' % exe)
+                super().run()
+                assert self.distribution.scripts
+                for script in self.distribution.scripts:
+                    exe = os.path.join(self.dist_dir, "%s.exe" % script)
+                    print('Compressing %s' % exe)
+                    subprocess.check_output(['win32util/upx.exe', '-9', exe])
+
         args['cmdclass']['py2exe'] = _MyPy2Exe
 
         args.update(
