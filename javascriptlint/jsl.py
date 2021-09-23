@@ -88,9 +88,9 @@ def _main():
         add("--enable-wildcards", dest="wildcards", action="store_true",
             default=False, help="resolve wildcards in the command line")
     add("--dump", dest="dump", action="store_true", default=False,
-        help="dump this script" if not hasattr(sys, 'frozen') else optparse.SUPPRESS_HELP)
+        help="dump this script" if not hasattr(sys, 'frozen') else argparse.SUPPRESS)
     add("--unittest", dest="unittest", action="store_true", default=False,
-        help="run the python unittests" if not hasattr(sys, 'frozen') else optparse.SUPPRESS_HELP)
+        help="run the python unittests" if not hasattr(sys, 'frozen') else argparse.SUPPRESS)
     add("--quiet", dest="verbosity", action="store_const", const=0,
         help="minimal output")
     add("--verbose", dest="verbosity", action="store_const", const=2,
