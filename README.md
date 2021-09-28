@@ -1,4 +1,4 @@
-# Creating a Windows Installer
+# Creating a Windows Binary
 
 
 Install pyinstaller
